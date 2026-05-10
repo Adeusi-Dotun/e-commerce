@@ -1,4 +1,5 @@
-import { StyleSheet,Pressable, Text, View } from 'react-native'
+import { AppText as Text } from '../components/CustomText';
+import { StyleSheet,Pressable, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React from 'react'
@@ -32,16 +33,13 @@ const styles = StyleSheet.create({
     alignItems:'center',
     justifyContent:'center',
     backgroundColor: '',
-    gap: 12,
-
-  },
+    gap: 12 },
 
   button:{
     backgroundColor:'#FF6B00',
     paddingVertical:18,
     paddingHorizontal:40,
-    borderRadius: 7,
-  }
+    borderRadius: 7 }
 
 
 

@@ -1,11 +1,16 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { AppText as Text } from '../components/CustomText';
+import { StyleSheet, View, SafeAreaView } from 'react-native'
 import React from 'react'
+import CustomHeader from '../components/CustomHeader';
 
 const TermsScreen = () => {
   return (
-    <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
-      <Text>TermsScreen</Text>
-    </View>
+    <SafeAreaView style={{flex:1, backgroundColor: 'white'}}>
+      <CustomHeader title="Terms and Conditions" />
+      <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
+        <Text>TermsScreen</Text>
+      </View>
+    </SafeAreaView>
   )
 }
 

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View, TextInput, StatusBar } from 'react-native'
+import { AppText as Text } from '../components/CustomText';
+import { StyleSheet, View, TextInput, StatusBar } from 'react-native'
 import React, { useState } from 'react'
 import { Ionicons } from '@expo/vector-icons';
 
@@ -47,8 +48,7 @@ export default CategoriesScreen
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
+    backgroundColor: '#F5F5F5' },
   header: {
     backgroundColor: '#fff',
     paddingTop: 50,
@@ -58,31 +58,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
-  },
+    elevation: 3 },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F0F0F0',
     borderRadius: 12,
-    paddingVertical: 10,
-  },
+    paddingVertical: 10 },
   searchIcon: {
-    marginHorizontal: 12,
-  },
+    marginHorizontal: 12 },
   searchInput: {
     flex: 1,
     fontSize: 15,
     color: '#222',
-    paddingVertical: 0,
-  },
+    paddingVertical: 0 },
   body: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   placeholder: {
     fontSize: 16,
-    color: '#aaa',
-  },
-})
+    color: '#aaa' } })
