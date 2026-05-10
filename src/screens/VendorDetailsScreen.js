@@ -14,36 +14,7 @@ const VendorDetailsScreen = () => {
 
   const categories = ['Popular', 'Rice', 'Grills', 'Drinks', 'Snacks'];
 
-  const menuItems = [
-    {
-      id: 1,
-      name: 'Special Party Jollof',
-      description: 'Smoky Jollof rice with fried plantain and beef.',
-      price: '4,500',
-      image: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=400&q=80' // Placeholder for Jollof
-    },
-    {
-      id: 2,
-      name: 'Pounded Yam & Egusi',
-      description: 'Smooth pounded yam served with rich egusi soup and assorted meat.',
-      price: '5,200',
-      image: 'https://images.unsplash.com/photo-1548811579-017fc2a8023e?w=400&q=80' // Placeholder
-    },
-    {
-      id: 3,
-      name: 'Grilled Turkey Wing',
-      description: 'Spicy glazed turkey wing with a side of slaw.',
-      price: '3,800',
-      image: 'https://images.unsplash.com/photo-1574653853027-5382a3d23a15?w=400&q=80' // Placeholder
-    },
-    {
-      id: 4,
-      name: 'Chapman',
-      description: 'Classic Nigerian cocktail mix with fruit garnishes.',
-      price: '1,500',
-      image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&q=80' // Placeholder
-    }
-  ];
+  const menuItems = vendor?.menu || [];
 
   return (
     <View style={styles.container}>
@@ -51,7 +22,7 @@ const VendorDetailsScreen = () => {
         
         {/* Header Image */}
         <ImageBackground
-          source={{ uri: 'https://images.unsplash.com/photo-1564834724105-918b73d1b9e0?w=800&q=80' }} // Food background placeholder
+          source={{uri: vendor.menu?.[0]?.image}}// Food background placeholder
           style={styles.headerImage}
         >
           <View style={styles.headerTopActions}>
@@ -92,13 +63,9 @@ const VendorDetailsScreen = () => {
               </View>
             </View>
 
-            <View style={styles.deliveryRow}>
-               <Text style={styles.statsText}>🛵 ₦500 delivery</Text>
-            </View>
-
             <View style={styles.tagsContainer}>
-              {['Rice', 'Swallow', 'Grills','Chickenle '].map((tag, idx) => (
-                <View key={idx} style={styles.tagBadge}>
+              {vendor?.tags?.map((tag, idx) =>(
+                <View key={idx} style= {styles.tagBadge}>
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
               ))}
@@ -247,7 +214,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 15,
   },
   statsText: {
     fontSize: 13,

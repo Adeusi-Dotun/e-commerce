@@ -1,35 +1,17 @@
 import { AppText as Text } from '../components/CustomText';
-import { StyleSheet, View, TextInput, Pressable, ScrollView } from 'react-native'
+import { StyleSheet, View, TextInput, Pressable, ScrollView, Image, Dimensions } from 'react-native'
+const { width } = Dimensions.get('window');
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState } from 'react';
+import { vendors } from '../data/vendor';
 
 const HomeScreen = () => {
 
   const navigation = useNavigation();
   const [search, setSearch] = useState('');
 
-  const vendors = [
-    {
-      id:1,
-      name: 'Adeola Kitchen',
-      location: 'Moremi Hall',
-      description: 'Homemade meals and small chops.',
-    },
-    {
-      id:2,
-      name: 'Campus Drip',
-      locaton: 'Biobaku Hall',
-      description:'Affordable Fashion Wears.',
-    },
-    {
-      id: 3,
-      name: 'Ten Thrift Store',
-      location:'Main Campus',
-      description: 'Affordable, trendy thrift wears'
-    },
-  ]
 
   return (
     <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
@@ -110,7 +92,7 @@ const HomeScreen = () => {
 
         <View style={styles.popularVendors}>
           <View style={styles.popularVendorsTop}>
-            <Text style={{fontSize:20, fontWeight:'500'}}>Featured Vendors</Text>
+            <Text style={{fontSize:20, fontWeight:'600'}}>Featured Vendors</Text>
             <Ionicons name='arrow-forward-outline' size={30} color={'rgba(255, 107, 0, 0.8)'}  />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.popularListing}>
@@ -120,16 +102,48 @@ const HomeScreen = () => {
                 style={styles.vendorCards}
                 onPress={() => navigation.navigate('VendorDetails', { vendor })}
               >
-                <View style={styles.vendorPic}></View>
+                <View style={styles.imageContainer}>
+                  {/* Safely get the first menu item's image, or fallback to default */}
+                  <Image source={{uri: vendor.menu?.[0]?.image || 'https://images.unsplash.com/photo-1564834724105-918b73d1b9e0?w=800&q=80'}} style={styles.vendorPic} />
+                  
+                  <View style={styles.topRatedBadge}>
+                    <Ionicons name="star" size={12} color="#A83B10" />
+                    <Text style={styles.topRatedText}>Top Rated</Text>
+                  </View>
+
+                  <Pressable style={styles.heartBtn} onPress={(e) => { e.stopPropagation(); /* Handle heart press */ }}>
+                    <Ionicons name="heart-outline" size={18} color="#A83B10" />
+                  </Pressable>
+                </View>
+
                 <View style={styles.vendorDetails}>
-                  <Text style={{fontWeight:'600'}}>{vendor.name}</Text>
-                  <Text style={{fontSize: 12, color: '#666'}}>{vendor.location || vendor.locaton}</Text>
+                  <Text style={styles.vendorName}>{vendor.name}</Text>
+                  <Text style={styles.vendorDescription}>{vendor.description}</Text>
+                  
+                  {vendor.tags && vendor.tags.length > 0 && (
+                     <Text style={styles.vendorTags}>{vendor.tags.join(' • ')}</Text>
+                  )}
+
+                  <View style={styles.statsRow}>
+                    <Ionicons name="star-outline" size={15} color="#A83B10" />
+                    <Text style={styles.statsText}> <Text style={{fontWeight:'700', color: '#333'}}>4.8</Text> (500+)</Text>
+                  </View>
+
+                  <View style={styles.statsRow}>
+                    <Text><Ionicons name="location-outline" size={15} color="#555" /> {vendor.location}</Text>
+                  </View>
+
+                  <View style={styles.badgesRow}>
+                    <View style={styles.pillBudget}>
+                      <Text style={styles.pillBudgetText}>Budget Friendly</Text>
+                    </View>
+                  </View>
                 </View>
               </Pressable>
             ))}
           </ScrollView> 
             
-            
+             
            
           
 
@@ -148,27 +162,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     paddingTop: 20,
     paddingHorizontal: 16,
-    paddingBottom: 16 },
+    paddingBottom: 16 
+  },
   header: {
-    gap: 4 },
+    gap: 4 
+  },
 
   greeting: {
     fontSize: 20,
     color: '#888',
-    fontWeight: '600' },
+    fontWeight: '600' 
+  },
   title: {
     fontSize: 35,
     fontWeight: '700',
     color: '#111',
-    marginBottom: 14 },
+    marginBottom: 14 
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F0F0F0',
     borderRadius: 12,
-    paddingVertical: 11 },
+    paddingVertical: 11 
+  },
   searchIcon: {
-    marginHorizontal: 12 },
+    marginHorizontal: 12 
+  },
   searchInput: {
     flex: 1,
     fontSize: 15,
@@ -180,7 +200,8 @@ const styles = StyleSheet.create({
   },
   categoryTop:{
     flexDirection:'row',
-    justifyContent:'space-between' },
+    justifyContent:'space-between' 
+  },
   Categories:{
     width:60,
     height:60,
@@ -218,33 +239,123 @@ const styles = StyleSheet.create({
   popularVendorsTop:{
     flexDirection:'row',
     alignItems:'center',
-    justifyContent:'space-between'
+    justifyContent:'space-between',
+    marginBottom: 10,
   },
   vendorCards:{
-    backgroundColor:'white',
-    flexDirection:'row',
-    alignSelf:'flex-start',
-    alignItems:'center',
-    padding:10,
-    gap:4,
+    backgroundColor:'#FFF',
+    width: width * 0.85,
+    borderRadius:24,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    borderRadius:10,
-    elevation: 2
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 3,
+    marginBottom: 10
+  },
+  imageContainer: {
+    width: '100%',
+    height: 150,
+    position: 'relative'
   },
   vendorPic:{
-    height:50,
-    width:50,
-    backgroundColor: 'rgba(200, 200, 200, 0.3)',
-    borderRadius:'100%'
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  topRatedBadge: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4
+  },
+  topRatedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#333'
+  },
+  heartBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    backgroundColor: '#FFF',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   vendorDetails:{
-    gap:3
+    padding: 20,
+  },
+  vendorName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111',
+    marginBottom: 6
+  },
+  vendorDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 14
+  },
+  vendorTags: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 16
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  statsText: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 6
+  },
+  statsDot: {
+    color: '#CCC',
+    marginHorizontal: 8
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8
+  },
+  pillFast: {
+    backgroundColor: '#FDECEB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16
+  },
+  pillFastText: {
+    color: '#A83B10',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  pillBudget: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16
+  },
+  pillBudgetText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '600'
   },
   popularListing:{
     flexDirection:'row',
-    gap:10
+    gap:20,
+    paddingBottom: 20
   }
 
     
