@@ -3,8 +3,12 @@ import { StyleSheet, View, TextInput, Pressable, ScrollView, ImageBackground, Im
 import { AppText as Text } from '../components/CustomText';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useContext } from 'react';
+import { CartContext } from '../context/CartContext';
 
 const VendorDetailsScreen = () => {
+
+
   const navigation = useNavigation();
   const route = useRoute();
   const { vendor } = route.params || {};
@@ -15,6 +19,8 @@ const VendorDetailsScreen = () => {
   const categories = ['Popular', 'Rice', 'Grills', 'Drinks', 'Snacks'];
 
   const menuItems = vendor?.menu || [];
+
+  const { addToCart, cartCount, cartTotal} = useContext(CartContext);
 
   return (
     <View style={styles.container}>
@@ -86,16 +92,7 @@ const VendorDetailsScreen = () => {
         </View>
 
         {/* Categories Horizontal Scroll */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesContainer}>
-          {categories.map((cat, idx) => {
-            const isActive = activeCategory === cat;
-            return (
-              <Pressable key={idx} onPress={() => setActiveCategory(cat)} style={[styles.categoryBadge, isActive && styles.categoryBadgeActive]}>
-                <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>{cat}</Text>
-              </Pressable>
-            )
-          })}
-        </ScrollView>
+        
 
         {/* Menu Items List */}
         <View style={styles.menuItemsContainer}>
@@ -107,7 +104,7 @@ const VendorDetailsScreen = () => {
                 <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
                 <Text style={styles.menuItemPrice}>₦{item.price}</Text>
               </View>
-              <Pressable style={styles.addButton}>
+              <Pressable style={styles.addButton} onPress={() => addToCart(item)}>
                 <Ionicons name="add" size={20} color="#777" />
               </Pressable>
               
@@ -119,10 +116,13 @@ const VendorDetailsScreen = () => {
 
       {/* Floating Cart Button */}
       <View style={styles.floatingCartContainer}>
-        <Pressable style={styles.floatingCartBtn}>
+        <Pressable 
+          style={styles.floatingCartBtn}
+          onPress={()=> navigation.navigate('Cart')}
+          >
            <View>
-             <Text style={styles.cartItemCount}>2 Items</Text>
-             <Text style={styles.cartTotalPrice}>₦9,700</Text>
+             <Text style={styles.cartItemCount}>{cartCount} Items</Text>
+             <Text style={styles.cartTotalPrice}>#{cartTotal}</Text>
            </View>
            <View style={styles.viewCartAction}>
              <Text style={styles.viewCartText}>View Cart</Text>

@@ -12,6 +12,7 @@ import AddressManagementScreen from '../screens/AddressManagementScreen';
 import AddNewAddress from '../screens/AddNewAddress';
 import AddCardScreen from '../screens/AddCardScreen';
 import VendorDetailsScreen from '../screens/VendorDetailsScreen';
+import CartScreen from '../screens/CartScreen'
 
 
 const Stack = createNativeStackNavigator();
@@ -34,6 +35,7 @@ const StackNavigator = () => {
         <Stack.Screen name="AddNewAddress" component={AddNewAddress} options={{headerShown: false, animation:'slide_from_right', gestureEnabled:true}} />
         <Stack.Screen name="AddCard" component={AddCardScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled:true}} />
         <Stack.Screen name="VendorDetails" component={VendorDetailsScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled:true}} />
+        <Stack.Screen name="Cart" component={CartScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled:true}} />
       </Stack.Navigator>
       
   )

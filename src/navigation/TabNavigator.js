@@ -1,7 +1,6 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeScreen from '../screens/HomeScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
-import CartScreen from '../screens/CartScreen';
 import AccountScreen from "../screens/AccountScreen";
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, View } from 'react-native';
@@ -63,23 +62,7 @@ export default function TabNavigator(){
                     )
                 }
             }}/>
-            <Tab.Screen name="Cart" component={CartScreen} 
-            options={{
-                tabBarLabel:'Cart',
-                tabBarLabelStyle: {
-                    fontSize: 13,
-                    fontWeight: '500'
-                },
-                tabBarIcon: ({focused, color, size}) =>{
-                    return(
-                        <Ionicons 
-                            name={focused ? 'cart' : "cart-outline"}
-                            size= {size}
-                            color= {color}
-                        />
-                    )
-                }
-            }}/>
+            
             <Tab.Screen name="Account" component={AccountScreen} 
             options={{
                 tabBarLabel:'Account',
