@@ -20,7 +20,7 @@ const VendorDetailsScreen = () => {
 
   const menuItems = vendor?.menu || [];
 
-  const { addToCart, cartCount, cartTotal} = useContext(CartContext);
+  const { addToCart, removeFromCart, cartItems, cartCount, cartTotal} = useContext(CartContext);
 
   return (
     <View style={styles.container}>
@@ -28,7 +28,7 @@ const VendorDetailsScreen = () => {
         
         {/* Header Image */}
         <ImageBackground
-          source={{uri: vendor.menu?.[0]?.image}}// Food background placeholder
+          source={{uri: vendor?.menu?.[0]?.image}}// Food background placeholder
           style={styles.headerImage}
         >
           <View style={styles.headerTopActions}>
@@ -96,7 +96,12 @@ const VendorDetailsScreen = () => {
 
         {/* Menu Items List */}
         <View style={styles.menuItemsContainer}>
-          {menuItems.map((item) => (
+          {menuItems.map((item) => {
+            const cartItem = cartItems.find(
+              (i) => i.id === item.id && i.vendorId === vendor?.id
+            );
+            const quantity = cartItem ? cartItem.quantity : 0;
+            return (
             <View key={item.id} style={styles.menuItemCard}>
               <Image source={{ uri: item.image }} style={styles.menuItemImage} />
               <View style={styles.menuItemDetails}>
@@ -104,12 +109,33 @@ const VendorDetailsScreen = () => {
                 <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
                 <Text style={styles.menuItemPrice}>₦{item.price}</Text>
               </View>
-              <Pressable style={styles.addButton} onPress={() => addToCart(item)}>
-                <Ionicons name="add" size={20} color="#777" />
-              </Pressable>
+              <View style={styles.qtyContainer}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.qtyButton,
+                    quantity === 0 && { opacity: 0.5 },
+                    pressed && quantity > 0 && { opacity: 0.7, transform: [{ scale: 0.95 }] }
+                  ]}
+                  onPress={() => quantity > 0 && removeFromCart(item.id, vendor?.id)}
+                >
+                  <Ionicons name="remove" size={16} color="#777" />
+                </Pressable>
+                <Text style={styles.qtyText}>{quantity}</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.qtyButton,
+                    styles.qtyBtnPlus,
+                    pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }
+                  ]}
+                  onPress={() => addToCart(item, vendor)}
+                >
+                  <Ionicons name="add" size={16} color="#FFF" />
+                </Pressable>
+              </View>
               
             </View>
-          ))}
+            );
+          })}
         </View>
 
       </ScrollView>
@@ -344,6 +370,39 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  qtyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 20,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  qtyButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  qtyBtnPlus: {
+    backgroundColor: '#B53B18', // using screen's brand orange color
+    borderWidth: 0,
+  },
+  qtyText: {
+    marginHorizontal: 10,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
   },
   popularRibbon: {
     position: 'absolute',

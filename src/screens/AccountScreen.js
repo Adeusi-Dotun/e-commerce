@@ -98,7 +98,10 @@ const AccountScreen = () => {
                 <Ionicons name='chevron-forward-outline' size={22} />
               </Pressable>
 
-              <Pressable style={styles.accountTabs}>
+              <Pressable
+                style={styles.accountTabs}
+                onPress={() => navigation.navigate('MyOrders')}
+              >
                 <View style={styles.leftTab}>
                   <View style={styles.tabIcon}>
                     <Ionicons name='receipt-outline' size={20} />
