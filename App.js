@@ -3,6 +3,7 @@ import StackNavigator from "./src/navigation/stackNavigator";
 import { AuthProvider } from "./src/context/AuthContext";
 import { CartProvider } from "./src/context/CartContext";
 import { OrderProvider } from "./src/context/OrderContext";
+import { AddressProvider } from "./src/context/AddressContext";
 
 import { useFonts, Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { ActivityIndicator, View } from 'react-native';
@@ -30,9 +31,11 @@ const App = () => {
     <CartProvider>
     <OrderProvider>
     <AuthProvider>
+    <AddressProvider>
     <NavigationContainer>
       <StackNavigator />
     </NavigationContainer>
+    </AddressProvider>
     </AuthProvider>
     </OrderProvider>
     </CartProvider>

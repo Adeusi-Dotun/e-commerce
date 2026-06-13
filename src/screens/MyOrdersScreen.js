@@ -12,6 +12,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { OrderContext } from '../context/OrderContext';
+import {
+  formatNaira,
+  computeItemsCountFromPackages,
+  buildOrderPreviewFromPackages,
+} from '../utils/orders';
 
 const BG_COLOR = '#FAFAFA';
 const CARD_COLOR = '#FFFFFF';
@@ -26,33 +31,8 @@ const STATUS_COLORS = {
   Cancelled: { dot: '#EF4444', bg: '#FEE2E2', text: '#DC2626' },
 };
 
-const computeItemsCountFromPackages = (packages = []) =>
-  packages.reduce((sum, vendor) => {
-    const vendorItems = Array.isArray(vendor?.items) ? vendor.items : [];
-    return (
-      sum +
-      vendorItems.reduce(
-        (subSum, item) => subSum + (Number(item?.quantity) || 1),
-        0
-      )
-    );
-  }, 0);
-
-const buildOrderPreviewFromPackages = (packages = []) => {
-  const names = [];
-
-  packages.forEach((vendor) => {
-    const vendorItems = Array.isArray(vendor?.items) ? vendor.items : [];
-    vendorItems.forEach((item) => {
-      const name = item?.name;
-      if (typeof name === 'string' && name.trim().length > 0) names.push(name.trim());
-    });
-  });
-
-  const top = names.slice(0, 3);
-  if (top.length === 0) return 'Your order';
-  return names.length > 3 ? `${top.join(' + ')} + ...` : top.join(' + ');
-};
+// formatNaira, computeItemsCountFromPackages, buildOrderPreviewFromPackages
+// are imported from utils/orders.
 
 const normalizeOrder = (raw) => {
   if (!raw || typeof raw !== 'object') return null;
@@ -95,9 +75,6 @@ const normalizeOrder = (raw) => {
     driverName: raw.driverName,
   };
 };
-
-const formatNaira = (amount) =>
-  `₦${Number(amount).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
 
 const MyOrdersScreen = () => {
   const navigation = useNavigation();

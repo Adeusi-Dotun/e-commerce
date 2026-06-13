@@ -1,10 +1,18 @@
 import { AppText as Text } from '../components/CustomText';
 import React, { useContext, useState } from 'react';
-import {View,ScrollView,StyleSheet,Pressable,Image,TextInput,SafeAreaView,Platform,} from 'react-native';
+import {View,ScrollView,StyleSheet,Pressable,Image,TextInput,SafeAreaView,Platform,Alert} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { CartContext } from '../context/CartContext';
+import { AddressContext } from '../context/AddressContext';
+import {
+  formatNaira,
+  getVendorInitials,
+  getVendorAccent,
+  computeOrderFees,
+  validateCoupon,
+} from '../utils/orders';
 
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
@@ -38,21 +46,7 @@ const PAYMENT_METHODS = [
   },
 ];
 
-const formatNaira = (amount) =>
-  `₦${amount.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
-
-const getVendorInitials = (name = '') =>
-  name
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-
-const getVendorAccent = (id) => {
-  const palette = ['#2D4A3E', '#3D4F6F', '#6B4E3D', '#5C3D5A', '#4A5568'];
-  return palette[(id || 0) % palette.length];
-};
+// formatNaira, getVendorInitials, getVendorAccent are imported from utils/orders
 
 const SectionLabel = ({ children, action, onAction }) => (
   <View style={styles.sectionLabelRow}>
@@ -72,6 +66,7 @@ const SurfaceCard = ({ children, style }) => (
 const CheckoutScreen = () => {
   const navigation = useNavigation();
   const { cart, cartCount, cartTotal } = useContext(CartContext);
+  const { selectedAddress } = useContext(AddressContext);
 
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [couponCode, setCouponCode] = useState('');
@@ -79,22 +74,20 @@ const CheckoutScreen = () => {
   const [selectedPayment, setSelectedPayment] = useState('card');
   const vendorCount = cart.length;
   const subtotal = cartTotal;
-  const deliveryFee = Math.min(800 + vendorCount * 350, 2400);
-  const serviceFee = Math.round(subtotal * 0.025);
-  const discount = appliedCoupon ? Math.round(subtotal * 0.1) : 0;
-  const grandTotal = Math.max(
-    0,
-    subtotal + deliveryFee + serviceFee - discount
-  );
+  const { deliveryFee, serviceFee, discount, grandTotal } = computeOrderFees({
+    subtotal,
+    vendorCount,
+    appliedCoupon,
+  });
 
   const estimatedWindow =
     vendorCount > 1 ? '45–65 min · Multi-vendor' : '35–50 min';
 
   const handleApplyCoupon = () => {
-    const code = couponCode.trim().toUpperCase();
-    if (code === 'UNILAG10' || code === 'PREMIUM') {
-      setAppliedCoupon({ code, label: '10% off your order' });
-    } else if (code.length > 0) {
+    const result = validateCoupon(couponCode);
+    if (result) {
+      setAppliedCoupon(result);
+    } else if (couponCode.trim().length > 0) {
       setAppliedCoupon(null);
     }
   };
@@ -131,18 +124,40 @@ return (
             <View style={styles.locationPin}>
               <Ionicons name="location" size={20} color={PRIMARY} />
             </View>
-            <View style={styles.addressBody}>
-              <Text style={styles.addressLabel}>Deliver to</Text>
-              <Text style={styles.addressTitle}>Moremi Hall, Room 204</Text>
-              <Text style={styles.addressMeta}>
-                University of Lagos · Akoka
-              </Text>
-            </View>
+            {selectedAddress ? (
+              <View style={styles.addressBody}>
+                <Text style={styles.addressLabel}>Deliver to ({selectedAddress.label || 'Campus'})</Text>
+                <Text style={styles.addressTitle}>
+                  {selectedAddress.locationName}{selectedAddress.details ? `, ${selectedAddress.details}` : ''}
+                </Text>
+                {selectedAddress.landmark ? (
+                  <Text style={styles.addressMeta}>
+                    {selectedAddress.landmark} · UNILAG Akoka
+                  </Text>
+                ) : (
+                  <Text style={styles.addressMeta}>
+                    University of Lagos · Akoka
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <View style={styles.addressBody}>
+                <Text style={styles.addressLabel}>Deliver to</Text>
+                <Text style={[styles.addressTitle, { color: '#B53B18', fontWeight: '600' }]}>
+                  No delivery address selected
+                </Text>
+                <Text style={styles.addressMeta}>
+                  Please choose a campus location for delivery
+                </Text>
+              </View>
+            )}
             <Pressable
               style={styles.changeBtn}
               onPress={() => navigation.navigate('AddressManagement')}
             >
-              <Text style={styles.changeBtnText}>Change</Text>
+              <Text style={styles.changeBtnText}>
+                {selectedAddress ? 'Change' : 'Add'}
+              </Text>
             </Pressable>
           </View>
 
@@ -379,15 +394,35 @@ return (
               styles.placeOrderBtn,
               pressed && styles.placeOrderBtnPressed,
             ]}
-            onPress={() => navigation.navigate('PlacedOrder', {
-              packages: cart,
-              subtotal,
-              deliveryFee,
-              discount,
-              appliedCoupon,
-              totalPaid: grandTotal,
-              selectedPayment,
-            })}
+            onPress={() => {
+              if (!selectedAddress) {
+                Alert.alert(
+                  "Delivery Address Required",
+                  "Please select or add a delivery address before placing your order.",
+                  [{ text: "OK" }]
+                );
+                return;
+              }
+              navigation.reset({
+                index: 1,
+                routes: [
+                  { name: 'MainTabs' },
+                  {
+                    name: 'PlacedOrder',
+                    params: {
+                      packages: cart,
+                      subtotal,
+                      deliveryFee,
+                      discount,
+                      appliedCoupon,
+                      totalPaid: grandTotal,
+                      selectedPayment,
+                      deliveryAddress: selectedAddress,
+                    },
+                  },
+                ],
+              });
+            }}
           >
             <Text style={styles.placeOrderText}>Place Order</Text>
             <View style={styles.placeOrderArrow}>

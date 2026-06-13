@@ -1,5 +1,5 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -22,6 +22,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
+import { formatNaira } from '../utils/orders';
 
 const BG = '#F3F3F3';
 const CARD = '#FFFFFF';
@@ -45,10 +46,7 @@ const fallbackOrder = {
   packages: [],
 };
 
-const formatNaira = (amount) =>
-  `\u20A6${Number(amount || 0).toLocaleString('en-NG', {
-    maximumFractionDigits: 0,
-  })}`;
+// formatNaira is imported from utils/orders
 
 const flattenItems = (packages = []) =>
   packages.flatMap((vendor) =>
@@ -133,45 +131,56 @@ const getOrderSummary = (order) => {
   };
 };
 
-const buildTimeline = (status) => {
-  const isDelivered = status === 'Completed';
-  const isCancelled = status === 'Cancelled';
+// Ordered list of statuses that map 1-to-1 with timeline steps.
+// Used by both buildTimeline and the dev simulation.
+const STATUS_SEQUENCE = [
+  'Order Confirmed',
+  'Payment Received',
+  'Vendor Preparing',
+  'Out for Delivery',
+  'Completed',
+];
 
-  return [
-    {
-      title: 'Order Confirmed',
-      detail: 'Oct 22, 09:41 AM',
-      state: 'done',
-      icon: 'checkmark',
-    },
-    {
-      title: 'Payment Received',
-      detail: 'Oct 22, 09:45 AM',
-      state: 'done',
-      icon: 'checkmark',
-    },
-    {
-      title: 'Vendor Preparing',
-      detail: 'Oct 23, 11:20 AM',
-      state: isCancelled ? 'done' : 'done',
-      icon: 'checkmark',
-    },
-    {
-      title: isCancelled ? 'Delivery Paused' : 'Out for Delivery',
-      detail: isCancelled
-        ? 'Support is reviewing this order.'
-        : 'Package left facility in Lekki.',
-      meta: isCancelled ? 'Pending support update' : 'Oct 23, 02:15 PM',
-      state: isDelivered ? 'done' : isCancelled ? 'alert' : 'current',
-      icon: isDelivered ? 'checkmark' : isCancelled ? 'alert' : 'bus',
-    },
-    {
-      title: 'Delivered',
-      detail: isDelivered ? 'Package delivered successfully.' : 'Pending',
-      state: isDelivered ? 'done' : 'pending',
-      icon: isDelivered ? 'checkmark' : null,
-    },
-  ];
+const TIMELINE_META = [
+  { title: 'Order Confirmed',  detail: 'Payment pending…'                },
+  { title: 'Payment Received', detail: 'Vendor has been notified.'        },
+  { title: 'Vendor Preparing', detail: 'Your items are being packed.'     },
+  { title: 'Out for Delivery', detail: 'Package left facility in Lekki.', meta: 'Estimated arrival soon' },
+  { title: 'Delivered',        detail: 'Package delivered successfully.'  },
+];
+
+/**
+ * Builds the timeline array whose step states are derived entirely from
+ * the current status position — no hard-coded flags needed.
+ */
+const buildTimeline = (status) => {
+  const activeIndex = STATUS_SEQUENCE.indexOf(status);
+
+  return TIMELINE_META.map((step, index) => {
+    let state;
+    let icon;
+
+    if (index < activeIndex) {
+      // Steps before the current one are done
+      state = 'done';
+      icon  = 'checkmark';
+    } else if (index === activeIndex) {
+      // The active step
+      if (status === 'Completed') {
+        state = 'done';
+        icon  = 'checkmark';
+      } else {
+        state = 'current';
+        icon  = index === 3 ? 'bus' : 'time-outline';
+      }
+    } else {
+      // Steps after the current one are still pending
+      state = 'pending';
+      icon  = null;
+    }
+
+    return { ...step, state, icon };
+  });
 };
 
 const SurfaceCard = ({ children, style }) => (
@@ -424,7 +433,35 @@ const TrackOrderScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const order = route.params?.order || fallbackOrder;
-  const statusMeta = getStatusMeta(order.status);
+
+  // ── Dynamic status state ─────────────────────────────────────────────────
+  const [status, setStatus] = useState(
+    order.status || 'Order Confirmed'
+  );
+
+  // TEMPORARY DEV SIMULATION - REMOVE WHEN BACKEND IS CONNECTED
+  // Walks through STATUS_SEQUENCE automatically, one step every 4.5 seconds,
+  // starting from the step after the initial status (or from the beginning
+  // if the initial status is not in the sequence).
+  useEffect(() => {
+  let timers = [];
+
+  const startIndex = STATUS_SEQUENCE.indexOf(status);
+
+  if (startIndex === -1 || startIndex >= STATUS_SEQUENCE.length - 1) return;
+
+  STATUS_SEQUENCE.slice(startIndex + 1).forEach((nextStatus, i) => {
+    timers.push(
+      setTimeout(() => setStatus(nextStatus), (i + 1) * 4500)
+    );
+  });
+
+  return () => timers.forEach(clearTimeout);
+      }, [status]); // Run once on mount — intentional, simulation starts from initial status
+  // END TEMPORARY DEV SIMULATION
+
+  // ── Derived values that re-compute whenever status changes ───────────────
+  const statusMeta = getStatusMeta(status);
   const deliveryText = getDeliveryText(order);
   const summary = useMemo(() => getOrderSummary(order), [order]);
 
@@ -458,7 +495,7 @@ const TrackOrderScreen = () => {
       >
         <MapPreview driverName={order.driverName || 'Chinedu O.'} />
         <EstimateCard deliveryText={deliveryText} />
-        <TrackingHistory status={order.status} />
+        <TrackingHistory status={status} />
         <OrderSummary summary={summary} />
 
         <View style={styles.actions}>
@@ -471,7 +508,7 @@ const TrackOrderScreen = () => {
             <Text style={styles.reportText}>Report Issue</Text>
           </Pressable>
 
-          {order.status !== 'Completed' ? (
+          {status !== 'Completed' ? (
             <Pressable style={styles.cancelBtn}>
               <Text style={styles.cancelText}>Cancel Order</Text>
             </Pressable>

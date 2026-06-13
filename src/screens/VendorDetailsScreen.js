@@ -47,7 +47,7 @@ const VendorDetailsScreen = () => {
         </ImageBackground>
 
         {/* Info Card that overlaps header image */}
-        <View style={styles.infoCardContainer}>
+          <View style={styles.infoCardContainer}>
             <View style={styles.vendorTitleRow}>
               <Text style={styles.vendorName}>{vendor?.name || 'The Gourmet Kitchen'}</Text>
               <View style={styles.openBadge}>
@@ -89,7 +89,7 @@ const VendorDetailsScreen = () => {
                 returnKeyType="search"
               />
             </View>
-        </View>
+          </View>
 
         {/* Categories Horizontal Scroll */}
         

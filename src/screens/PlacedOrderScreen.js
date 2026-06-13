@@ -15,6 +15,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { OrderContext } from '../context/OrderContext';
+import { CartContext } from '../context/CartContext';
+import {
+  formatNaira,
+  getVendorAccent,
+  getVendorInitials,
+  generateOrderId,
+  getEstimatedDelivery,
+  formatOrderDateLabel,
+  computeItemsCountFromPackages,
+  buildOrderPreviewFromPackages,
+  PAYMENT_LABELS,
+} from '../utils/orders';
 
 // ── Design tokens (matching project palette) ──
 const BG = '#F7F5F0';
@@ -28,89 +40,9 @@ const SHADOW = 'rgba(26, 22, 18, 0.08)';
 const SUCCESS_GREEN = '#2D6A4F';
 const PROMO_RED = '#C0392B';
 
-// ── Helpers ──
-const formatNaira = (amount) =>
-  `₦${Number(amount).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
-
-const getVendorAccent = (id) => {
-  const palette = ['#2D4A3E', '#3D4F6F', '#6B4E3D', '#5C3D5A', '#4A5568'];
-  return palette[(id || 0) % palette.length];
-};
-
-const getVendorInitials = (name = '') =>
-  name
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-
-const generateOrderId = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const suffix = Array.from({ length: 4 }, () =>
-    chars[Math.floor(Math.random() * chars.length)]
-  ).join('');
-  return `ORD-2026-${suffix}`;
-};
-
-const getEstimatedDelivery = () => {
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() + 2);
-  const to = new Date(now);
-  to.setDate(to.getDate() + 3);
-  const fmt = (d) =>
-    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  return { from: fmt(from), to: fmt(to) };
-};
-
-const formatOrderDateLabel = (d) => {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfGiven = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((startOfGiven - startOfToday) / (24 * 60 * 60 * 1000));
-
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const datePart =
-    diffDays === 0
-      ? 'Today'
-      : diffDays === -1
-        ? 'Yesterday'
-        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-  return `${datePart} • ${time}`;
-};
-
-const computeItemsCountFromPackages = (packages = []) =>
-  packages.reduce((sum, vendor) => {
-    const vendorItems = Array.isArray(vendor?.items) ? vendor.items : [];
-    return (
-      sum +
-      vendorItems.reduce((subSum, item) => subSum + (Number(item?.quantity) || 1), 0)
-    );
-  }, 0);
-
-const buildOrderPreviewFromPackages = (packages = []) => {
-  const names = [];
-
-  packages.forEach((vendor) => {
-    const vendorItems = Array.isArray(vendor?.items) ? vendor.items : [];
-    vendorItems.forEach((item) => {
-      const name = item?.name;
-      if (typeof name === 'string' && name.trim().length > 0) names.push(name.trim());
-    });
-  });
-
-  const top = names.slice(0, 3);
-  if (top.length === 0) return 'Your order';
-  return names.length > 3 ? `${top.join(' + ')} + ...` : top.join(' + ');
-};
-
-const PAYMENT_LABELS = {
-  card: 'Card ending in 4242',
-  transfer: 'Bank Transfer',
-  wallet: 'Wallet Balance',
-};
+// All helpers (formatNaira, getVendorAccent, getVendorInitials, generateOrderId,
+// getEstimatedDelivery, formatOrderDateLabel, computeItemsCountFromPackages,
+// buildOrderPreviewFromPackages, PAYMENT_LABELS) are imported from utils/orders.
 
 // ── Reusable surface card ──
 const SurfaceCard = ({ children, style }) => (
@@ -158,6 +90,7 @@ const PlacedOrderScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { addOrder } = useContext(OrderContext);
+  const { clearCart } = useContext(CartContext);
   const fadeIn = useRef(new Animated.Value(0)).current;
   const orderIdRef = useRef(generateOrderId());
   const deliveryRef = useRef(getEstimatedDelivery());
@@ -202,11 +135,12 @@ const PlacedOrderScreen = () => {
 
   useEffect(() => {
     if (!hasSavedOrderRef.current) {
-    addOrder(placedOrder);
-    hasSavedOrderRef.current = true;
+      addOrder(placedOrder);
+      clearCart();
+      hasSavedOrderRef.current = true;
     }
     
-  }, [addOrder, placedOrder]);
+  }, [addOrder, placedOrder, clearCart]);
 
 
   const handleShareOrder = async () => {
@@ -297,7 +231,7 @@ const PlacedOrderScreen = () => {
                         {item.name}
                       </Text>
                       <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
-                    </View>
+                    </View>                                                                                                                                                                    
                     <Text style={styles.itemPrice}>
                       {formatNaira(item.price * item.quantity)}
                     </Text>
