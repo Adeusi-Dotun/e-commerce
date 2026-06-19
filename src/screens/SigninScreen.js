@@ -4,17 +4,24 @@ import { TextInput } from 'react-native'
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React from 'react';
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
 const SigninScreen = () => {
 
     const navigation = useNavigation();
 
+    const [email, setEmail] =  useState('');
+    const [password, setPassword] =  useState('');
+    const [showPassword, setShowPassword] = useState(false);
+
     const { login } = useContext(AuthContext);
 
-    const handleLogin = () => {
-        login(email, password);
+    const handleLogin = async () => {
+        const success = await login(email, password);
+        if (success) {
+            navigation.goBack();
+        }      
     };
 
     return (
@@ -38,6 +45,8 @@ const SigninScreen = () => {
                     <TextInput
                         placeholder='name@example.com'
                         style={styles.input}
+                        value={email}
+                        onChangeText={setEmail}
                     />
                 </View>
                 <View style={{ gap: 10 }}>
@@ -45,15 +54,31 @@ const SigninScreen = () => {
                         <Text style={styles.inputLabel}>PASSWORD</Text>
                         <Text style={{ color: 'blue', fontWeight: 400 }}>Forgot password?</Text>
                     </View>
-                    <TextInput
-                        placeholder='Password'
-                        secureTextEntry={true}
-                        style={styles.input}
-                    />
+                    <View style={styles.passwordInputContainer}>
+                        <TextInput
+                            placeholder='Password'
+                            secureTextEntry={!showPassword}
+                            style={styles.passwordTextInput}
+                            value={password}
+                            onChangeText={setPassword}
+                        />
+                        <Pressable 
+                            onPress={() => setShowPassword(!showPassword)} 
+                            style={styles.eyeIcon}
+                            hitSlop={8}
+                        >
+                            <Ionicons 
+                                name={showPassword ? 'eye-outline' : 'eye-off-outline'} 
+                                size={22} 
+                                color='grey' 
+                            />
+                        </Pressable>
+                    </View>
                 </View>
                 <Pressable
-                    onPress={() => { }}
+                    onPress={handleLogin}
                     style={styles.signinButton}
+                    
                 >
                     <Text style={{ color: 'white', fontWeight: 700, fontSize: 18 }}>Sign in</Text>
                 </Pressable>
@@ -133,6 +158,18 @@ const styles = StyleSheet.create({
         padding: 20,
         backgroundColor: 'white',
         borderRadius: 7 },
+    passwordInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: 7,
+        paddingHorizontal: 20 },
+    passwordTextInput: {
+        flex: 1,
+        paddingVertical: 20 },
+    eyeIcon: {
+        marginLeft: 10 },
     inputLabel: {
         fontWeight: 500 },
     signinButton: {

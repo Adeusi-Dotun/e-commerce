@@ -1,21 +1,27 @@
 import { AppText as Text } from '../components/CustomText';
 import { StyleSheet, Pressable, View, ScrollView } from 'react-native';
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { AuthContext } from '../context/AuthContext';
 
 const AccountScreen = () => {
 
   const navigation = useNavigation();
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const {user, profile, logout, loading} = useContext(AuthContext);
+
+  const handleLogout = async () => {
+    await logout();
+    navigation.reset({ index: 0, routes: [{ name: 'AccountInfo' }] });
+  };
 
   return (
     <ScrollView
       style={styles.accountPage}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── LOGGED OUT VIEW ── */}
-      {!isLoggedIn && (
+      {/* ── LOGGED OUT VIEW ── */}ac
+      {!user && (
         <View>
           <View style={styles.top}>
             <Text style={{ fontSize: 20, fontWeight: 700 }}>Ready to Shop?</Text>
@@ -71,13 +77,13 @@ const AccountScreen = () => {
       )}
 
       {/* ── LOGGED IN VIEW ── */}
-      {isLoggedIn && (
+      {user && (
         <View style={{ gap: 20 }}>
           <View style={styles.loggedInTop}>
             <View style={styles.avatar} />
             <View style={styles.loggedInTopTexts}>
-              <Text style={{ fontSize: 22, fontWeight: 600 }}>Adeusi Adedotun</Text>
-              <Text>adeusidotun102@gmail.com</Text>
+              <Text style={{ fontSize: 22, fontWeight: 600 }}>{profile?.first_name} {profile?.last_name}</Text>
+              <Text>{user.email}</Text>
             </View>
           </View>
 
@@ -208,7 +214,7 @@ const AccountScreen = () => {
           </View>
 
           <Pressable
-            onPress={() => setIsLoggedIn(false)}
+            onPress={handleLogout}
             style={styles.logOut}
           >
             <Ionicons name='log-out-outline' size={20} />

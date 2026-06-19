@@ -13,12 +13,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useContext } from 'react';
 import { CartContext } from '../context/CartContext';
+import { AuthContext } from '../context/AuthContext';
 
 const PRIMARY_COLOR = '#FF6B00';
 const BG_COLOR = '#F7F5F0';
 
 const CartScreen = () => {
+
+  const {requireAuth} = useContext(AuthContext);
   const navigation = useNavigation();
+
+
+  const goToCheckout = () => {
+    requireAuth(navigation, () => {
+      navigation.navigate('Checkout');
+    });
+  };                                                                      
 
   const {
     cart,
@@ -176,7 +186,7 @@ const CartScreen = () => {
                 <Text style={{alignSelf: 'flex-start', fontWeight: 600}}>Total</Text>
                 <Text style={styles.checkoutTotalPrice}>₦{cartTotal.toFixed(2)}</Text>
               </View>
-              <Pressable onPress={() => navigation.navigate('Checkout')} style={styles.checkout}>
+              <Pressable onPress={goToCheckout}  style={styles.checkout}>
                 <Text style={styles.checkoutBtnText}>Proceed to Checkout</Text>
               </Pressable>
             </View>
