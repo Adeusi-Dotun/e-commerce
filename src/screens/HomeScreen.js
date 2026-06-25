@@ -53,6 +53,18 @@ const HomeScreen = () => {
               <Text style={{fontWeight:'600', color:'white'}}>Order Now</Text>
           </Pressable>
         </View>
+        <Pressable
+          style={styles.vendorBanner}
+          onPress={() => navigation.navigate('VendorApplication')}
+        >
+          <View style={styles.vendorBannerTexts}>
+            <Text style={styles.vendorBannerTitle}>Sell on UniMart</Text>
+            <Text style={styles.vendorBannerSubtitle}>Apply to become a vendor today</Text>
+          </View>
+          <View style={styles.vendorBannerIcon}>
+            <Ionicons name="storefront-outline" size={28} color="#FF6B00" />
+          </View>
+        </Pressable>
         <View style={styles.category}>
           <View style={styles.categoryTop}>
             <Text style={{fontSize:16, fontWeight:'900'}}>Categories</Text>
@@ -226,6 +238,36 @@ const styles = StyleSheet.create({
     gap:7,
     marginTop:20
   },
+  vendorBanner: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.3)',
+    padding: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  vendorBannerTexts: {
+    gap: 4,
+  },
+  vendorBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  vendorBannerSubtitle: {
+    fontSize: 13,
+    color: 'grey',
+  },
+  vendorBannerIcon: {
+    backgroundColor: 'rgba(255, 107, 0, 0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   orderBtn:{
     backgroundColor:'rgba(255, 107, 0, 0.8)',
     padding:15,
@@ -359,4 +401,4 @@ const styles = StyleSheet.create({
   }
 
     
-}) 
+})

@@ -17,6 +17,7 @@ import CheckoutScreen from '../screens/CheckoutScreen';
 import PlacedOrderScreen from '../screens/PlacedOrderScreen';
 import MyOrdersScreen from '../screens/MyOrdersScreen';
 import TrackOrderScreen from '../screens/TrackOrderScreen';
+import VendorApplicationScreen from '../screens/VendorApplicationScreen';
 
 
 
@@ -45,6 +46,19 @@ const StackNavigator = () => {
         <Stack.Screen name="PlacedOrder" component={PlacedOrderScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled: false}} />
         <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled: true}} />
         <Stack.Screen name="TrackOrder" component={TrackOrderScreen} options={{headerShown: false, animation:'slide_from_right', gestureEnabled: true}} />
+        <Stack.Screen
+          name="VendorApplication"
+          component={VendorApplicationScreen}
+          options={{
+            title: 'Become a Vendor',
+            headerShown: true,
+            headerStyle: { backgroundColor: 'white' },
+            headerTintColor: '#111',
+            headerTitleStyle: { fontWeight: '800', fontSize: 20 },
+            animation:'slide_from_right',
+            gestureEnabled: true
+          }}
+        />
       </Stack.Navigator>
       
   )

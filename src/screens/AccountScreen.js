@@ -93,6 +93,21 @@ const AccountScreen = () => {
 
               <Pressable
                 style={styles.accountTabs}
+                onPress={() => navigation.navigate('VendorApplication')}
+              >
+                <View style={styles.leftTab}>
+                  <View style={styles.tabIcon}>
+                    <Ionicons name='storefront-outline' size={18} />
+                  </View>
+                  <Text style={{ fontSize: 18, fontWeight: 600 }}>Become a Vendor</Text>
+                </View>
+                <View style={styles.vendorApplyPill}>
+                  <Text style={styles.vendorApplyText}>Apply</Text>
+                </View>
+              </Pressable>
+
+              <Pressable
+                style={styles.accountTabs}
                 onPress={() => navigation.navigate('AccountInfo')}
               >
                 <View style={styles.leftTab}>
@@ -321,6 +336,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  vendorApplyPill: {
+    backgroundColor: 'rgba(255, 107, 0, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  vendorApplyText: {
+    color: '#FF6B00',
+    fontWeight: '700',
+    fontSize: 12,
   },
   accountSettings: {
     backgroundColor: 'rgba(200, 200, 200, 0.1)',
