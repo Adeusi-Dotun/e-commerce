@@ -4,13 +4,38 @@ const { width } = Dimensions.get('window');
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { vendors } from '../data/vendor';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+
 
 const HomeScreen = () => {
 
   const navigation = useNavigation();
   const [search, setSearch] = useState('');
+
+  const [vendors, setVendors] = useState([]) ;
+
+  useEffect(() => {
+    fetchVendors();
+  },[]);
+
+
+  const fetchVendors = async () => {
+    const {data, error} = await supabase
+      .from("vendors")
+      .select("*")
+      .eq("is_active", true);
+
+       console.log("DATA:", data);
+      console.log("ERROR:", error);
+      
+      if (error) {
+        console.log(error);
+        return;
+      }
+      
+      setVendors(data);
+  }
 
 
   return (
@@ -55,7 +80,7 @@ const HomeScreen = () => {
         </View>
         <Pressable
           style={styles.vendorBanner}
-          onPress={() => navigation.navigate('VendorApplication')}
+          onPress={() => navigation.navigate('VendorGate')}
         >
           <View style={styles.vendorBannerTexts}>
             <Text style={styles.vendorBannerTitle}>Sell on UniMart</Text>

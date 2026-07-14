@@ -3,8 +3,9 @@ import { StyleSheet, View, TextInput, Pressable, ScrollView, ImageBackground, Im
 import { AppText as Text } from '../components/CustomText';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useContext } from 'react';
+import { useContext, useEffect } from 'react';
 import { CartContext } from '../context/CartContext';
+import {supabase} from '../lib/supabase';
 
 const VendorDetailsScreen = () => {
 
@@ -12,13 +13,47 @@ const VendorDetailsScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { vendor } = route.params || {};
-
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Popular');
 
   const categories = ['Popular', 'Rice', 'Grills', 'Drinks', 'Snacks'];
 
-  const menuItems = vendor?.menu || [];
+  const [menuItems, setMenuItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [vendor?.id]);
+
+  const fetchProducts = async () => {
+    if (!vendor?.id) return;
+
+    setLoading(true);
+
+    console.log("Vendor object:", vendor);
+    console.log("Vendor ID:", vendor?.id);
+
+    const {data, error} = await supabase
+    .from("products")
+    .select ("*")
+    .eq("vendor_id", vendor.id)
+    .eq("is_available", true)
+    .order("created_at", { ascending: true });
+
+    console.log("Products:", data);
+    console.log("Error:", error);
+
+
+    if (error) {
+      console.log(error);
+    }
+    else {
+      setMenuItems(data);
+    }
+
+
+    setLoading(false);
+  }
 
   const { addToCart, removeFromCart, cartItems, cartCount, cartTotal} = useContext(CartContext);
 

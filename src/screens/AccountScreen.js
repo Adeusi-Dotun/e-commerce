@@ -1,14 +1,41 @@
 import { AppText as Text } from '../components/CustomText';
 import { StyleSheet, Pressable, View, ScrollView } from 'react-native';
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
+import {supabase} from '../lib/supabase';
 
 const AccountScreen = () => {
 
   const navigation = useNavigation();
   const {user, profile, logout, loading} = useContext(AuthContext);
+
+  const [application, setApplication] = useState(null);
+  const [applicationLoading, setApplicationLoading] = useState(true);
+
+
+  useEffect(() => {
+    if(user) {
+      fetchApplication();
+    }
+  }, [user]);
+
+
+  const fetchApplication = async () => {
+    const {data, error} = await supabase
+      .from("vendor_applications")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+
+      if(!error) {
+        setApplication(data);
+      }
+
+      setApplicationLoading(false);
+    };
 
   const handleLogout = async () => {
     await logout();
@@ -20,7 +47,7 @@ const AccountScreen = () => {
       style={styles.accountPage}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── LOGGED OUT VIEW ── */}ac
+      {/* ── LOGGED OUT VIEW ── */}
       {!user && (
         <View>
           <View style={styles.top}>
@@ -93,17 +120,32 @@ const AccountScreen = () => {
 
               <Pressable
                 style={styles.accountTabs}
-                onPress={() => navigation.navigate('VendorApplication')}
+                onPress = {() => {
+                  if(application?.status === 'approved') {
+                    navigation.navigate('VendorDashboard');
+                  } else {
+                    navigation.navigate('VendorGate');
+                  }
+                }}
               >
                 <View style={styles.leftTab}>
                   <View style={styles.tabIcon}>
-                    <Ionicons name='storefront-outline' size={18} />
+                    <Ionicons name= {application?.status === 'approved' ? "speedometer-outline" : "storefront-outline"}  size={18} />
                   </View>
-                  <Text style={{ fontSize: 18, fontWeight: 600 }}>Become a Vendor</Text>
+                    <Text style={{ fontSize: 18, fontWeight: 600 }}>
+                      {application?.status ==='approved' ? 'My Vendor Dashboard' : 'Become a Vendor'}
+                    </Text>
                 </View>
-                <View style={styles.vendorApplyPill}>
-                  <Text style={styles.vendorApplyText}>Apply</Text>
-                </View>
+                {application?.status === "approved" ? (
+                  <Ionicons
+                    name="chevron-forward-outline"
+                    size={22}
+                   />
+                ) : (
+                  <View style={styles.vendorApplyPill}>
+                    <Text style={styles.vendorApplyText}>Apply</Text>
+                  </View>
+                )}
               </Pressable>
 
               <Pressable

@@ -28,17 +28,17 @@ const App = () => {
 
   return (
     
+    <AuthProvider>
     <CartProvider>
     <OrderProvider>
-    <AuthProvider>
     <AddressProvider>
     <NavigationContainer>
       <StackNavigator />
     </NavigationContainer>
     </AddressProvider>
-    </AuthProvider>
     </OrderProvider>
     </CartProvider>
+    </AuthProvider>
   )
 }
 

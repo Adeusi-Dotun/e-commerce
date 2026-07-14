@@ -6,7 +6,7 @@ export const CartContext = createContext();
 export const CartProvider = ({ children }) =>{
     const [cart, setCart] = useState([]);
 
-    const addToCart = (item , vendor) => {-
+    const addToCart = (item , vendor) => {
         setCart((prevCart) => {
             const selectedVendor = vendor || {
                 id: item.vendorId,
