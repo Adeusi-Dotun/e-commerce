@@ -1,18 +1,20 @@
-import React, { useMemo, useState } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Switch,
-} from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import {View, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, Switch, Dimensions} from 'react-native';
+import { supabase } from '../lib/supabase';
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { AppText as Text } from '../components/CustomText';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from "react-native";
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GRID_GAP = 12;
+const SLOT_SIZE = (SCREEN_WIDTH - 80 - GRID_GAP * 2) / 3;
 
 const PRIMARY = '#FF6B00';
 const BG = '#FAFAF9';
@@ -106,19 +108,45 @@ function ToggleRow({ icon, iconBg, iconColor, title, subtitle, value, onValueCha
 
 export default function AddProductScreen() {
   const navigation = useNavigation();
-
+  const { user } = useContext(AuthContext)
+  const [images, setImages] = useState([]);
   const [productName, setProductName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Food & Meals');
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
-  const [price, setPrice] = useState('2500');
-  const [stockQuantity, setStockQuantity] = useState('24');
+  const [price, setPrice] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('');
   const [available, setAvailable] = useState(true);
-  const [lowStockAlert, setLowStockAlert] = useState(true);
   const [prepTime, setPrepTime] = useState('15');
   const [status, setStatus] = useState('active');
   const [variants, setVariants] = useState([{ id: '1', name: 'Size', values: 'Small, Medium, Large' }]);
+
+  const [vendor, setVendor] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const MAX_IMAGES = 5;
+
+
+  const fetchVendor = async () => {
+    const { data, error } = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.log(error);
+      return;
+    }
+
+    setVendor(data);
+    setLoading(false);  
+  };
+
+  useEffect(() => {
+    fetchVendor();
+  },[user]);
 
   const filteredCategories = useMemo(() => {
     if (!categorySearch.trim()) return CATEGORIES;
@@ -130,6 +158,149 @@ export default function AddProductScreen() {
   const removeVariant = (id) => {
     setVariants((current) => current.filter((v) => v.id !== id));
   };
+
+
+  const addProduct = async () => {
+
+    console.log("Publish button pressed");
+
+    console.log("Vendor:", vendor);
+    console.log("Images:", images);
+
+
+    const imageUrls = await uploadImages();
+
+    console.log("Uploaded URLs:", imageUrls);
+
+    const { data , error} = await supabase
+      .from ("products")
+      .insert ([
+        {
+          vendor_id: vendor.id,
+          name: productName,
+          description,
+          price: Number(price),
+          category,
+          stock: Number(stockQuantity),
+          images: imageUrls,
+          is_available: true
+        },
+      ])
+      .select()
+      .single();
+
+
+      console.log("Insert data:", data);
+      console.log("Insert error:", error);
+
+
+      if(error) {
+        console.log(error);
+        return;
+      }
+
+      alert ("Product added successfully!");
+
+      resetForm();
+
+      navigation.goBack();
+  }
+
+  const pickImage = async () => {
+  const permission =  await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+
+  if (!permission.granted) {
+    alert("Permission denied");
+    return;
+  }
+
+  const remaining = MAX_IMAGES - images.length;
+
+  if (remaining <= 0) {
+    alert(`You can only select up to ${MAX_IMAGES} images.`);
+    return;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: remaining,
+      });
+
+  if (result.canceled) return;
+
+   const newImages = [...images, ...result.assets]
+
+    setImages(newImages.slice(0, MAX_IMAGES));
+    
+  }; 
+
+
+  const removeImage = (index) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  
+  const uploadImages = async () => {
+
+  const imageUrls = [];
+
+  for (const image of images) {
+
+    try {
+   
+      const base64 = await FileSystem.readAsStringAsync(image.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+    const fileExt = image.uri.split(".").pop() || "png";
+    const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+
+    console.log("about to upload....");
+
+    const { data: uploadData, error } = await supabase.storage
+      .from("products")
+      .upload(fileName, decode(base64), {contentType: image.mimeType});
+
+      if (error) {
+      console.log(error);
+      return null;
+    }
+
+      console.log('UPLOAD SUCCESS:', uploadData);
+
+      const { data: publicUrlData } = supabase.storage
+      .from("products")
+      .getPublicUrl(fileName);
+
+      imageUrls.push(publicUrlData.publicUrl);
+
+    } catch (err) {
+      console.log("Upload error:", err);
+      return null;
+    }
+  }
+
+  return imageUrls;
+};
+
+
+const resetForm = () => {
+  setImages([]);
+  setProductName('');
+  setDescription('');
+  setCategory('Food & Meals');
+  setPrice('');
+  setStockQuantity('');
+  setAvailable(true);
+  setPrepTime('15');
+  setStatus('active');
+  setVariants([{ id: '1', name: 'Size', values: 'Small, Medium, Large' }]);
+};
+
+
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -157,16 +328,38 @@ export default function AddProductScreen() {
           {/* 01 Product Images */}
           <SectionCard number="01" title="Product Images">
             <View style={styles.imageGrid}>
-              <Pressable style={styles.imageAddBox}>
-                <Ionicons name="camera-outline" size={24} color="#999" />
-                <Text style={styles.imageAddText}>Add Photo</Text>
-              </Pressable>
-              <View style={styles.imagePlaceholder}>
-                <Ionicons name="image-outline" size={28} color="#CCC" />
-              </View>
-              <View style={styles.imagePlaceholder}>
-                <Ionicons name="image-outline" size={28} color="#CCC" />
-              </View>
+              {Array.from({ length: MAX_IMAGES }).map((_, index) => {
+                const image = images[index];
+                return (
+                  <Pressable
+                    key={index}
+                    style={styles.imageSlot}
+                    onPress={!image ? pickImage : undefined }
+                  >
+                    {image ? (
+                      <>
+                        <Image
+                          source={{ uri: image.uri }}
+                          style={styles.imagePlaceholder}
+                        />
+                        <Pressable
+                          style={styles.removeImageBtn}
+                          onPress={() => removeImage(index)}
+                        >
+                          <Ionicons name="close-circle" size={20} color="#FF6B00" />
+                        </Pressable>
+                      </>
+                    ) : (
+                      <View style={styles.imageSlotInner}>
+                        <Ionicons name="add" size={24} color="#999" />
+                        {index === 0 && (
+                          <Text style={styles.imageAddText}>Add Photo</Text>
+                        )}
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
             <Text style={styles.imageHint}>Add up to 5 photos. First photo is the cover.</Text>
           </SectionCard>
@@ -275,15 +468,6 @@ export default function AddProductScreen() {
               onValueChange={setAvailable}
             />
             <View style={styles.divider} />
-            <ToggleRow
-              icon="notifications-outline"
-              iconBg="#FFF0E8"
-              iconColor={PRIMARY}
-              title="Low Stock Alert"
-              subtitle="Notify me at 5 units left"
-              value={lowStockAlert}
-              onValueChange={setLowStockAlert}
-            />
           </SectionCard>
 
           {/* 05 Additional Details */}
@@ -364,7 +548,8 @@ export default function AddProductScreen() {
           <Pressable style={styles.draftBtn}>
             <Text style={styles.draftBtnText}>Save as Draft</Text>
           </Pressable>
-          <Pressable style={styles.publishBtn}>
+          <Pressable style={styles.publishBtn}
+            onPress={addProduct}>
             <Text style={styles.publishBtnText}>Publish Product</Text>
           </Pressable>
         </View>
@@ -446,8 +631,53 @@ const styles = StyleSheet.create({
 
   imageGrid: {
     flexDirection: 'row',
-    gap: 10,
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
   },
+
+  imageSlot: {
+    width: SLOT_SIZE,
+    aspectRatio: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E5E5',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+
+  coverBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  coverLabelText: {
+    fontSize: 70,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
   imageAddBox: {
     flex: 1,
     aspectRatio: 1,
@@ -461,10 +691,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   imageAddText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#999',
     fontWeight: '500',
+    textAlign: 'center',
   },
+  imageSlotInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  
   imagePlaceholder: {
     flex: 1,
     aspectRatio: 1,
@@ -474,9 +713,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   imageHint: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 10,
+    fontSize: 13,
+    color: '#888',
+    marginTop: 12,
   },
 
   fieldWrap: {

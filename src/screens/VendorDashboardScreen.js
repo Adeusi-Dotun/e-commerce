@@ -1,20 +1,20 @@
 import React from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  Dimensions,
-} from 'react-native';
+import {View, ScrollView, StyleSheet, Pressable, Dimensions,} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useState, useEffect, useContext } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { supabase } from '../lib/supabase';
+import { AuthContext } from '../context/AuthContext';
 import { AppText as Text } from '../components/CustomText';
+
 
 const PRIMARY = '#FF6B00';
 const BG = '#FAFAF9';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+
 
 const STATS = [
   {
@@ -47,12 +47,7 @@ const STATS = [
   },
 ];
 
-const QUICK_ACTIONS = [
-  { label: 'Add Product', icon: 'add', color: PRIMARY, route: 'AddProduct' },
-  { label: 'Manage', icon: 'grid-outline', color: '#3B82F6' },
-  { label: 'Orders', icon: 'document-text-outline', color: '#22C55E' },
-  { label: 'Store', icon: 'storefront-outline', color: '#9333EA' },
-];
+
 
 const RECENT_ORDERS = [
   {
@@ -85,7 +80,7 @@ const LOW_STOCK = [
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: 'grid', active: true },
-  { label: 'Products', icon: 'cube-outline', active: false },
+  { label: 'Products', icon: 'cube-outline', active: false, route: 'VendorProducts' },
   { label: 'Orders', icon: 'receipt-outline', active: false },
   { label: 'Messages', icon: 'chatbubble-outline', active: false },
   { label: 'Profile', icon: 'person-outline', active: false },
@@ -169,7 +164,42 @@ function OrderStatusBadge({ status, variant }) {
 }
 
 export default function VendorDashboardScreen() {
+  
   const navigation = useNavigation();
+  const { user } = useContext(AuthContext);
+  const  [vendor, setVendor] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const initials = vendor?.name
+    ?.split(" ")
+    .map(word => word [0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const fetchVendor = async () => {
+    const {data, error} = await supabase
+      .from( "vendors")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+      if(error) {
+        console.log(error);
+        return;
+      }
+
+      setVendor(data);
+      setLoading(false);
+
+  };
+
+
+  useEffect(() => {
+    if(user) {
+      fetchVendor();
+    }
+  },[user]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -182,11 +212,11 @@ export default function VendorDashboardScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>AK</Text>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
             <View>
               <Text style={styles.greeting}>Good morning 👋</Text>
-              <Text style={styles.vendorName}>Adeola Kitchen</Text>
+              <Text style={styles.vendorName}>{vendor?.name}</Text>
             </View>
           </View>
           <Pressable style={styles.notifBtn}>
@@ -202,22 +232,7 @@ export default function VendorDashboardScreen() {
           ))}
         </View>
 
-        {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          {QUICK_ACTIONS.map((action) => (
-            <Pressable
-              key={action.label}
-              style={styles.quickActionItem}
-              onPress={() => action.route && navigation.navigate(action.route)}
-            >
-              <View style={[styles.quickActionCircle, { backgroundColor: action.color }]}>
-                <Ionicons name={action.icon} size={22} color="#fff" />
-              </View>
-              <Text style={styles.quickActionLabel}>{action.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+
 
         {/* Recent Orders */}
         <View style={styles.sectionHeader}>
@@ -276,11 +291,25 @@ export default function VendorDashboardScreen() {
         </View>
       </ScrollView>
 
+      {/* Floating Add Product Button */}
+      <Pressable
+        style={styles.fab}
+        onPress={() => navigation.navigate('AddProduct')}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </Pressable>
+
       {/* Bottom Nav */}
       <View style={styles.bottomNavWrap}>
         <View style={styles.bottomNav}>
           {NAV_ITEMS.map((item) => (
-            <Pressable key={item.label} style={styles.navItem}>
+            <Pressable
+              key={item.label}
+              style={styles.navItem}
+              onPress={() => {
+                if (item.route) navigation.navigate(item.route);
+              }}
+            >
               {item.active ? (
                 <View style={styles.navActiveIcon}>
                   <Ionicons name={item.icon} size={20} color="#fff" />
@@ -450,26 +479,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 28,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  quickActionCircle: {
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 110,
     width: 56,
     height: 56,
     borderRadius: 28,
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  quickActionLabel: {
-    fontSize: 12,
-    color: '#555',
-    fontWeight: '500',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 5,
   },
 
   cardList: {

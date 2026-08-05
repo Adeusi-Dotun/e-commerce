@@ -21,6 +21,8 @@ import VendorApplicationScreen from '../screens/VendorApplicationScreen';
 import VendorGateScreen from '../screens/VendorGateScreen';
 import VendorDashboardScreen from '../screens/VendorDashboardScreen';
 import AddProductScreen from '../screens/AddProductScreen';
+import VendorProductsScreen from '../screens/VendorProductsScreen';
+
 
 
 
@@ -87,6 +89,15 @@ const StackNavigator = () => {
         <Stack.Screen
           name="AddProduct"
           component={AddProductScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="VendorProducts"
+          component={VendorProductsScreen}
           options={{
             headerShown: false,
             animation: 'slide_from_right',

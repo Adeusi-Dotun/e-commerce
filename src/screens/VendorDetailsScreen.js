@@ -40,9 +40,7 @@ const VendorDetailsScreen = () => {
     .eq("is_available", true)
     .order("created_at", { ascending: true });
 
-    console.log("Products:", data);
-    console.log("Error:", error);
-
+    
 
     if (error) {
       console.log(error);
@@ -132,13 +130,14 @@ const VendorDetailsScreen = () => {
         {/* Menu Items List */}
         <View style={styles.menuItemsContainer}>
           {menuItems.map((item) => {
+             console.log(item.name, item.images);
             const cartItem = cartItems.find(
               (i) => i.id === item.id && i.vendorId === vendor?.id
             );
             const quantity = cartItem ? cartItem.quantity : 0;
             return (
             <View key={item.id} style={styles.menuItemCard}>
-              <Image source={{ uri: item.image }} style={styles.menuItemImage} />
+              <Image source={{ uri: item.images?.[0] || '' }} style={styles.menuItemImage} />
               <View style={styles.menuItemDetails}>
                 <Text style={styles.menuItemTitle}>{item.name}</Text>
                 <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
