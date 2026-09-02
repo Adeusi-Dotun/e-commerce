@@ -14,64 +14,6 @@ const PRIMARY = '#FF6B00';
 const BG = '#FAFAF9';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-
-
-const STATS = [
-  {
-    label: "Today's Revenue",
-    value: '₦48,250',
-    icon: 'cash-outline',
-    iconBg: '#E8F4FD',
-    iconColor: '#3B82F6',
-  },
-  {
-    label: 'Orders Today',
-    value: '0',
-    icon: 'bag-handle-outline',
-    iconBg: '#FFF0E8',
-    iconColor: '#EF4444',
-  },
-  {
-    label: 'Total Products',
-    value: '3',
-    icon: 'cube-outline',
-    iconBg: '#F3E8FF',
-    iconColor: '#9333EA',
-  },
-  {
-    label: 'Average Rating',
-    value: '4.9',
-    icon: 'star',
-    iconBg: '#FEF9C3',
-    iconColor: '#EAB308',
-  },
-];
-
-
-
-const RECENT_ORDERS = [
-  {
-    id: '1',
-    initials: 'CO',
-    avatarBg: '#3B82F6',
-    name: 'Chinedu O.',
-    items: 'Jollof rice • Chicken',
-    price: '₦3,200',
-    status: 'Preparing',
-    statusStyle: 'preparing',
-  },
-  {
-    id: '2',
-    initials: 'FB',
-    avatarBg: '#9333EA',
-    name: 'Fatima B.',
-    items: 'Suya wrap • Coke',
-    price: '₦2,150',
-    status: 'Ready',
-    statusStyle: 'ready',
-  },
-];
-
 const LOW_STOCK = [
   { id: '1', name: 'Jollof Rice Pack', left: 3, icon: 'restaurant-outline', iconBg: '#FFF0E8' },
   { id: '2', name: 'Chicken Wrap', left: 5, icon: 'fast-food-outline', iconBg: '#FEF9C3' },
@@ -81,7 +23,7 @@ const LOW_STOCK = [
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: 'grid', active: true },
   { label: 'Products', icon: 'cube-outline', active: false, route: 'VendorProducts' },
-  { label: 'Orders', icon: 'receipt-outline', active: false },
+  { label: 'Orders', icon: 'receipt-outline', active: false, route: 'VendorOrders' },
   { label: 'Messages', icon: 'chatbubble-outline', active: false },
   { label: 'Profile', icon: 'person-outline', active: false },
 ];
@@ -164,11 +106,58 @@ function OrderStatusBadge({ status, variant }) {
 }
 
 export default function VendorDashboardScreen() {
+
+ 
   
   const navigation = useNavigation();
   const { user } = useContext(AuthContext);
-  const  [vendor, setVendor] = useState(null);
+ 
+  const [vendor, setVendor] = useState(null);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    ordersToday: 0,
+    totalProducts: 0,
+    averageRating: 0,
+  });
+
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
+
+
+   const dashboardStats = [
+  {
+    label: "Today's Revenue",
+    value: `₦${stats.totalRevenue.toLocaleString()}`,
+    icon: 'cash-outline',
+    iconBg: '#E8F4FD',
+    iconColor: '#3B82F6',
+  },
+
+  {
+    label: 'Orders Today',
+    value: stats.ordersToday.toString(),
+    icon: 'bag-handle-outline',
+    iconBg: '#FFF0E8',
+    iconColor: '#EF4444',
+  },
+
+  {
+    label: 'Total Products',
+    value: stats.totalProducts.toString(),
+    icon: 'cube-outline',
+    iconBg: '#F3E8FF',
+    iconColor: '#9333EA',
+  },
+
+  {
+    label: 'Average Rating',
+    value: stats.averageRating.toString(),
+    icon: 'star',
+    iconBg: '#FEF9C3',
+    iconColor: '#EAB308',
+  },
+];
 
   const initials = vendor?.name
     ?.split(" ")
@@ -178,29 +167,139 @@ export default function VendorDashboardScreen() {
     .toUpperCase();
 
   const fetchVendor = async () => {
-    const {data, error} = await supabase
-      .from( "vendors")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
 
-      if(error) {
-        console.log(error);
+    try {
+      if (!user?.id) return null;
+
+      const {data, error} = await supabase
+        .from( "vendors")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+        if(error) {
+          console.log(error);
+          return;
+        }
+
+        setVendor(data);
+
+        return data;
+    }  catch (error) {
+        console.log("Error fetching vendor:", error);
+        return null;
+      }  
+  };
+
+  //Fetch total products count for the vendor
+
+  const fetchTotalProducts = async (vendorId) => {
+    const { count, error } = await supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("vendor_id", vendorId);
+
+    if (error) {
+      console.log("Error fetching total products:", error);
+      return 0;
+    }
+
+    return count || 0;
+  };
+
+  // Fetch low stock products data for the vendor
+
+  const fetchLowStock = async (vendorId) => {
+    const { data,error } = await supabase
+    .from ("products")
+    .select("*")
+    .eq("vendor_id", vendorId)
+    .lt("stock", 5)
+    .order("stock", { ascending: true });
+
+    if (error) {
+      console.log("Error fetching low stock products:", error);
+      return [];
+    }
+
+    return data || [];
+  };
+  
+  // Fetch recent orders for the vendor
+    
+  const fetchRecentOrders = async (vendorId) => {
+    const { data, error } = await supabase
+      .from("order_packages")
+      .select(`
+        *,
+        orders (
+          *
+        ),
+        order_items (
+          *
+        )
+      `)
+      .eq("vendor_id", vendorId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.log("RECENT ORDERS ERROR:", error);
+      return [];
+    }
+
+    return data || [];
+  };
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      const vendorData = await fetchVendor();
+      
+      if (!vendorData) {
+        setLoading(false);
         return;
       }
 
-      setVendor(data);
-      setLoading(false);
+      const vendorId = vendorData.id;
 
-  };
+      const [ totalProducts, lowStockProducts, recentVendorsOrders,] = await Promise.all([
+        fetchTotalProducts(vendorId),
+        fetchLowStock(vendorId),
+        fetchRecentOrders(vendorId),
+      ]);
+
+      setLowStock(lowStockProducts);
+      setRecentOrders(recentVendorsOrders);
+
+      setStats ({
+        totalRevenue: 0,
+        ordersToday: 0,
+        totalProducts: totalProducts,
+        averageRating: 0,
+      });
+    
+    } catch (error) {
+      console.log("Error fetching dashboard data:", error);  
+
+    } finally {
+      setLoading(false);
+    }   
+  }; 
+
+
+
 
 
   useEffect(() => {
-    if(user) {
-      fetchVendor();
-    }
-  },[user]);
 
+    if (user?.id) {
+      fetchDashboardData();
+    }
+  }, [user]);
+
+  
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
@@ -227,7 +326,7 @@ export default function VendorDashboardScreen() {
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
-          {STATS.map((stat) => (
+          {dashboardStats.map((stat) => (
             <StatCard key={stat.label} stat={stat} />
           ))}
         </View>
@@ -242,7 +341,7 @@ export default function VendorDashboardScreen() {
           </Pressable>
         </View>
         <View style={styles.cardList}>
-          {RECENT_ORDERS.map((order) => (
+          {recentOrders.map((order) => (
             <Pressable key={order.id} style={styles.orderCard}>
               <View style={[styles.orderAvatar, { backgroundColor: order.avatarBg }]}>
                 <Text style={styles.orderAvatarText}>{order.initials}</Text>

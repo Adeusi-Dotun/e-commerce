@@ -1,21 +1,12 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useRef, useEffect, useContext, useMemo } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  Image,
-  SafeAreaView,
-  Platform,
-  Animated,
-  Share,
-} from 'react-native';
+import React, { useRef, useEffect, useContext } from 'react';
+import {View,ScrollView,StyleSheet,Pressable,Image,  SafeAreaView,Platform,Animated,Share,} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { OrderContext } from '../context/OrderContext';
 import { CartContext } from '../context/CartContext';
+import { AuthContext } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
   formatNaira,
   getVendorAccent,
@@ -28,7 +19,7 @@ import {
   PAYMENT_LABELS,
 } from '../utils/orders';
 
-// ── Design tokens (matching project palette) ──
+
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
 const TEXT_COLOR = '#1A1612';
@@ -40,16 +31,12 @@ const SHADOW = 'rgba(26, 22, 18, 0.08)';
 const SUCCESS_GREEN = '#2D6A4F';
 const PROMO_RED = '#C0392B';
 
-// All helpers (formatNaira, getVendorAccent, getVendorInitials, generateOrderId,
-// getEstimatedDelivery, formatOrderDateLabel, computeItemsCountFromPackages,
-// buildOrderPreviewFromPackages, PAYMENT_LABELS) are imported from utils/orders.
 
-// ── Reusable surface card ──
 const SurfaceCard = ({ children, style }) => (
   <View style={[styles.surfaceCard, style]}>{children}</View>
 );
 
-// ── Animated checkmark ──
+
 const AnimatedCheck = () => {
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -89,13 +76,13 @@ const AnimatedCheck = () => {
 const PlacedOrderScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { addOrder } = useContext(OrderContext);
   const { clearCart } = useContext(CartContext);
   const fadeIn = useRef(new Animated.Value(0)).current;
   const orderIdRef = useRef(generateOrderId());
   const deliveryRef = useRef(getEstimatedDelivery());
   const placedAtRef = useRef(new Date());
   const hasSavedOrderRef = useRef(false);
+  const { orderId } = route.params;
 
   // Extract data passed from CheckoutScreen
   const {
@@ -108,21 +95,9 @@ const PlacedOrderScreen = () => {
     selectedPayment = 'card',
   } = route.params || {};
 
-  const orderId = orderIdRef.current;
   const estimatedDelivery = deliveryRef.current;
   const paymentMethodLabel = PAYMENT_LABELS[selectedPayment] || 'Card';
-  const placedOrder = useMemo(() => ({
-  id: orderId,
-  status: 'Ongoing',
-  vendors: Array.isArray(packages) ? packages.length : 0,
-  items: computeItemsCountFromPackages(packages),
-  preview: buildOrderPreviewFromPackages(packages),
-  date: formatOrderDateLabel(placedAtRef.current),
-  total: totalPaid,
-  packages,
-  estimatedDelivery,
-  driverName: 'Chinedu O.',
-}), [orderId, packages, totalPaid, estimatedDelivery]);
+  
 
   useEffect(() => {
     Animated.timing(fadeIn, {
@@ -135,12 +110,35 @@ const PlacedOrderScreen = () => {
 
   useEffect(() => {
     if (!hasSavedOrderRef.current) {
-      addOrder(placedOrder);
       clearCart();
       hasSavedOrderRef.current = true;
     }
-    
-  }, [addOrder, placedOrder, clearCart]);
+  }, [clearCart]);
+
+  useEffect(() => {
+    const fetchOrder = async () => {
+      const  { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_packages (
+            *,
+            order_items (*)
+          )
+        `)
+        .eq('id', orderId)
+        .single();
+      
+      console.log('PLACED ORDER:'. data);
+      console.log('PLACED ORDER ERROR:'. error);
+      };
+
+    fetchOrder();
+  }, [orderId]);
+      
+      
+        
+
 
 
   const handleShareOrder = async () => {

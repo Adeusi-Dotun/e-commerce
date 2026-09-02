@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from "react-native";
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-
+import { useRoute } from '@react-navigation/native';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_GAP = 12;
 const SLOT_SIZE = (SCREEN_WIDTH - 80 - GRID_GAP * 2) / 3;
@@ -110,7 +110,7 @@ export default function AddProductScreen() {
   const navigation = useNavigation();
   const { user } = useContext(AuthContext)
   const [images, setImages] = useState([]);
-  const [productName, setProductName] = useState('');
+  const [productName, setProductName] = useState( "");
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Food & Meals');
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -121,6 +121,10 @@ export default function AddProductScreen() {
   const [prepTime, setPrepTime] = useState('15');
   const [status, setStatus] = useState('active');
   const [variants, setVariants] = useState([{ id: '1', name: 'Size', values: 'Small, Medium, Large' }]);
+  const route = useRoute();
+  const [publish ,setPublish] = useState('Publish Product');
+  const [title ,setTitle] = useState('Add Product');
+  const product = route.params?.product;
 
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +152,19 @@ export default function AddProductScreen() {
     fetchVendor();
   },[user]);
 
+  useEffect(() => {
+    if (!product) return;
+
+    setProductName(product.name);
+    setDescription(product.description);
+    setPrice(product.price.toString());
+    setStockQuantity(product.stock.toString());
+    setCategory(product.category);
+    setImages(product.images.map(url => ({ uri: url })));
+    setPublish('Update Product');
+    setTitle('Edit Product');
+  }, [product]);
+
   const filteredCategories = useMemo(() => {
     if (!categorySearch.trim()) return CATEGORIES;
     return CATEGORIES.filter((c) =>
@@ -163,16 +180,35 @@ export default function AddProductScreen() {
   const addProduct = async () => {
 
     console.log("Publish button pressed");
-
-    console.log("Vendor:", vendor);
-    console.log("Images:", images);
-
-
     const imageUrls = await uploadImages();
 
-    console.log("Uploaded URLs:", imageUrls);
+    console.log("Image urls before insert:", imageUrls);
+    
+    if (product) {
+      const { data, error } = await supabase
+        .from("products")
+        .update({
+          name: productName,
+          description,
+          price: Number(price),
+          category,
+          stock: Number(stockQuantity),
+          images: imageUrls,
+        })
+        .eq("id", product.id)
 
-    const { data , error} = await supabase
+
+      if (error) {
+        console.log("UPDATE ERROR:", JSON.stringify(error, null, 2));
+        alert("Update failed: " + error.message);
+        return;
+      }
+
+      alert("Product updated successfully!");
+      navigation.goBack();
+    }
+    else {
+      const { data , error} = await supabase
       .from ("products")
       .insert ([
         {
@@ -186,24 +222,20 @@ export default function AddProductScreen() {
           is_available: true
         },
       ])
-      .select()
-      .single();
-
-
-      console.log("Insert data:", data);
-      console.log("Insert error:", error);
-
-
+      
       if(error) {
         console.log(error);
         return;
       }
 
       alert ("Product added successfully!");
-
       resetForm();
-
       navigation.goBack();
+    }
+
+      
+
+      
   }
 
   const pickImage = async () => {
@@ -250,22 +282,33 @@ export default function AddProductScreen() {
   for (const image of images) {
 
     try {
-   
-      const base64 = await FileSystem.readAsStringAsync(image.uri, {
+          //Existing supabase image
+      if (image.uri.startsWith('http')) {
+        imageUrls.push(image.uri);
+        continue;
+      }
+
+       // New local image
+       const base64 = await FileSystem.readAsStringAsync(image.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-    const fileExt = image.uri.split(".").pop() || "png";
-    const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+      console.log("Base64 length:", base64.length);
 
-    console.log("about to upload....");
+      const fileExt = image.uri.split(".").pop() || "jpg";
+      const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
 
-    const { data: uploadData, error } = await supabase.storage
-      .from("products")
-      .upload(fileName, decode(base64), {contentType: image.mimeType});
+      console.log("About to upload:", fileName);
 
+      const { data: uploadData, error } = await supabase.storage
+        .from("products")
+        .upload(fileName, decode(base64), {
+          contentType: image.mimeType || "image/jpeg",
+          upsert: false,
+        });
+   
       if (error) {
-      console.log(error);
+      console.log("UPLOAD ERROR:", error);
       return null;
     }
 
@@ -274,6 +317,9 @@ export default function AddProductScreen() {
       const { data: publicUrlData } = supabase.storage
       .from("products")
       .getPublicUrl(fileName);
+
+      console.log("PUBLIC URL DATA:", publicUrlData);
+      console.log("PUBLIC URL:", publicUrlData.publicUrl);
 
       imageUrls.push(publicUrlData.publicUrl);
 
@@ -299,7 +345,7 @@ const resetForm = () => {
   setStatus('active');
   setVariants([{ id: '1', name: 'Size', values: 'Small, Medium, Large' }]);
 };
-
+    
 
 
   return (
@@ -309,7 +355,7 @@ const resetForm = () => {
         <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color="#111" />
         </Pressable>
-        <Text style={styles.headerTitle}>Add Product</Text>
+        <Text style={styles.headerTitle}>{title}</Text>
         <Pressable>
           <Text style={styles.saveDraftLink}>Save Draft</Text>
         </Pressable>
@@ -550,7 +596,7 @@ const resetForm = () => {
           </Pressable>
           <Pressable style={styles.publishBtn}
             onPress={addProduct}>
-            <Text style={styles.publishBtnText}>Publish Product</Text>
+            <Text style={styles.publishBtnText}>{publish}</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

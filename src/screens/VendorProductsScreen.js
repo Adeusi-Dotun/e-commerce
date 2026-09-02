@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { AuthContext } from '../context/AuthContext';
 import { AppText as Text } from '../components/CustomText';
+import { useFocusEffect } from '@react-navigation/native';
 
 const PRIMARY = '#FF6B00';
 const BG = '#FAFAF9';
@@ -24,7 +25,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: 'grid-outline', active: false, route: 'VendorDashboard' },
   { label: 'Products', icon: 'cube-outline', active: true, route: 'VendorProducts' },
-  { label: 'Orders', icon: 'receipt-outline', active: false },
+  { label: 'Orders', icon: 'receipt-outline', active: false, route: 'VendorOrders' },
   { label: 'Messages', icon: 'chatbubble-outline', active: false },
   { label: 'Profile', icon: 'person-outline', active: false },
 ];
@@ -180,9 +181,11 @@ export default function VendorProductsScreen() {
     setLoading(false);
   }, [vendor?.id]);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts();
+    }, [fetchProducts]) 
+  );
 
   // Computed stats
   const total = products.length;

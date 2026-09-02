@@ -30,9 +30,6 @@ const VendorDetailsScreen = () => {
 
     setLoading(true);
 
-    console.log("Vendor object:", vendor);
-    console.log("Vendor ID:", vendor?.id);
-
     const {data, error} = await supabase
     .from("products")
     .select ("*")

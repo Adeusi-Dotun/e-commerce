@@ -127,7 +127,7 @@ const CartScreen = () => {
                     <View key={item.id}>
                       <View style={styles.itemsCard}>
                         <View style={styles.itemsCardTop}>
-                          <Image source={{uri: item.image}} style={styles.itemImage} />
+                          <Image source={{uri: item.images?.[0]}} style={styles.itemImage} />
                           <View style={styles.itemDetails}>
                             <Text style={{fontSize:15, fontWeight:700}}>{item.name}</Text>
                             <Text style={{fontSize:11.5,}}>{item.description}</Text>

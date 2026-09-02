@@ -1,18 +1,14 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useContext, useState } from 'react';
+import React, { useContext , useState } from 'react';
 import {View,ScrollView,StyleSheet,Pressable,Image,TextInput,SafeAreaView,Platform,Alert} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { CartContext } from '../context/CartContext';
 import { AddressContext } from '../context/AddressContext';
-import {
-  formatNaira,
-  getVendorInitials,
-  getVendorAccent,
-  computeOrderFees,
-  validateCoupon,
-} from '../utils/orders';
+import {formatNaira , getVendorInitials , getVendorAccent , computeOrderFees , validateCoupon ,} from '../utils/orders';
+import { supabase } from '../lib/supabase';
+import { AuthContext } from '../context/AuthContext';
 
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
@@ -67,6 +63,7 @@ const CheckoutScreen = () => {
   const navigation = useNavigation();
   const { cart, cartCount, cartTotal } = useContext(CartContext);
   const { selectedAddress } = useContext(AddressContext);
+  const { user } = useContext(AuthContext);
 
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [couponCode, setCouponCode] = useState('');
@@ -94,6 +91,88 @@ const CheckoutScreen = () => {
 
   const itemCountLabel =
     cartCount === 1 ? '1 item' : `${cartCount} items`;
+
+
+    const handlePlaceOrder = async () => {
+
+      console.log("Placed Order Successfully")
+      
+      if (!selectedAddress) {
+        Alert.alert("Please select or add a delivery address");
+        return;
+      }
+
+      const { data , error } = await supabase
+      .from("orders")
+      .insert([
+        {
+          buyer_id: user.id,
+          total: grandTotal,
+          delivery_address: selectedAddress,
+          note: deliveryNotes,
+          status: 'pending',
+        },
+      ])
+      .select()
+      .single();
+     
+      if (error) {
+        console.log( "Order Error:", error);
+        return;
+      }
+
+      console.log('Order Placed:', data);
+
+      for (const vendor of cart) {
+
+          const packageSubtotal = vendor.items.reduce(
+            (total, item) => total + (item.price * item.quantity),
+            0
+          );
+
+        const { data: packageData , error: packageError } = await supabase
+          .from('order_packages')
+          .insert ([
+            {
+              order_id: data.id,
+              vendor_id: vendor.vendorId,
+              status: 'pending',
+              subtotal: packageSubtotal, 
+            },
+          ])
+          .select()
+          .single();
+
+          if (packageError) {
+            console.log("PACKAGE ERROR:", packageError);
+            return;
+          }
+
+          console.log('PACKAGE:', packageData);
+
+
+          const {error: itemError} = await supabase
+          .from('order_items')
+          .insert(
+            vendor.items.map((item) => ({
+              package_id: packageData.id,
+              product_id: item.id,
+              quantity: item.quantity,
+              price: item.price,
+              name:item.name,
+            }))
+          );
+
+          if(itemError) {
+            console.log("ITEMS ERROR:", itemError);
+            return; 
+          };
+      }
+
+      navigation.navigate('PlacedOrder' , { orderId: data.id });
+
+    }
+
 
 return (
     <SafeAreaView style={styles.safeArea}>
@@ -220,7 +299,7 @@ return (
                 {index > 0 ? <View style={styles.itemDivider} /> : null}
                 <View style={styles.orderItem}>
                   <Image
-                    source={{ uri: item.image }}
+                    source={{ uri: item.images?.[0] }}
                     style={styles.itemThumb}
                   />
                   <View style={styles.itemInfo}>
@@ -395,33 +474,7 @@ return (
               pressed && styles.placeOrderBtnPressed,
             ]}
             onPress={() => {
-              if (!selectedAddress) {
-                Alert.alert(
-                  "Delivery Address Required",
-                  "Please select or add a delivery address before placing your order.",
-                  [{ text: "OK" }]
-                );
-                return;
-              }
-              navigation.reset({
-                index: 1,
-                routes: [
-                  { name: 'MainTabs' },
-                  {
-                    name: 'PlacedOrder',
-                    params: {
-                      packages: cart,
-                      subtotal,
-                      deliveryFee,
-                      discount,
-                      appliedCoupon,
-                      totalPaid: grandTotal,
-                      selectedPayment,
-                      deliveryAddress: selectedAddress,
-                    },
-                  },
-                ],
-              });
+              handlePlaceOrder();
             }}
           >
             <Text style={styles.placeOrderText}>Place Order</Text>

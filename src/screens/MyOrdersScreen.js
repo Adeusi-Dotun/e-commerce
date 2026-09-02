@@ -1,22 +1,12 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useContext, useMemo, useState } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  SafeAreaView,
-  Platform,
-} from 'react-native';
+import React, { useContext, useMemo, useState, useEffect } from 'react';
+import {View,ScrollView, StyleSheet, Pressable, SafeAreaView, Platform,} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { OrderContext } from '../context/OrderContext';
-import {
-  formatNaira,
-  computeItemsCountFromPackages,
-  buildOrderPreviewFromPackages,
-} from '../utils/orders';
+import { supabase } from '../lib/supabase';
+import {AuthContext} from '../context/AuthContext';
+import {formatNaira,buildOrderPreviewFromPackages,} from '../utils/orders';
 
 const BG_COLOR = '#FAFAFA';
 const CARD_COLOR = '#FFFFFF';
@@ -31,14 +21,24 @@ const STATUS_COLORS = {
   Cancelled: { dot: '#EF4444', bg: '#FEE2E2', text: '#DC2626' },
 };
 
-// formatNaira, computeItemsCountFromPackages, buildOrderPreviewFromPackages
-// are imported from utils/orders.
-
 const normalizeOrder = (raw) => {
   if (!raw || typeof raw !== 'object') return null;
 
-  const packages = Array.isArray(raw.packages) ? raw.packages : undefined;
-  const status = raw.status || 'Ongoing';
+  const packages = Array.isArray(raw.order_packages)
+    ? raw.order_packages
+    : Array.isArray(raw.packages)
+    ? raw.packages
+  : [];
+
+ 
+    const statusMap = {
+    pending: 'Ongoing',
+    ongoing: 'Ongoing',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+  };
+
+const status = statusMap[raw.status] || 'Ongoing';
 
   const vendors =
     raw.vendors !== undefined && raw.vendors !== null
@@ -47,12 +47,16 @@ const normalizeOrder = (raw) => {
         ? packages.length
         : 0;
 
-  const items =
-    raw.items !== undefined && raw.items !== null
-      ? Number(raw.items)
-      : packages
-        ? computeItemsCountFromPackages(packages)
-        : 0;
+    const items = packages.reduce((total, pkg) => {
+    const orderItems = Array.isArray(pkg.order_items)
+      ? pkg.order_items
+      : [];
+
+    return total + orderItems.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+  }, 0);
 
   const preview =
     typeof raw.preview === 'string' && raw.preview.trim().length > 0
@@ -64,6 +68,7 @@ const normalizeOrder = (raw) => {
   return {
     ...raw,
     id: raw.id || raw.orderId || '',
+    orderNumber: raw.order_number,
     status,
     vendors,
     items,
@@ -78,39 +83,67 @@ const normalizeOrder = (raw) => {
 
 const MyOrdersScreen = () => {
   const navigation = useNavigation();
-  const route = useRoute();
-  const { orders: contextOrders = [] } = useContext(OrderContext);
+  const { user } = useContext(AuthContext);
+  const [orders, setOrders] = useState([]);
+  const [loading , setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Ongoing');
 
-  const incomingOrders = route.params?.orders
-    ? route.params.orders
-    : route.params?.order
-      ? [route.params.order]
-      : [];
 
-  const orders = useMemo(() => {
-    const allRawOrders = [
-      ...(Array.isArray(contextOrders) ? contextOrders : []),
-      ...(Array.isArray(incomingOrders) ? incomingOrders : []),
-    ];
+  useEffect(() => {
+  const fetchOrders = async () => {
+    if (!user?.id) return;
 
-    const uniqueById = [];
-    const seen = new Set();
+    setLoading(true);
 
-    allRawOrders.forEach((rawOrder) => {
-      const normalized = normalizeOrder(rawOrder);
-      if (!normalized || !normalized.id || seen.has(normalized.id)) return;
-      seen.add(normalized.id);
-      uniqueById.push(normalized);
-    });
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_packages (
+          *,
+          order_items (*)
+        )
+      `)
+      .eq('buyer_id', user.id)
+      .order('created_at', { ascending: false });
 
-    return uniqueById;
-  }, [contextOrders, incomingOrders]);
+        console.log('🔥 MY ORDERS DATA:',JSON.stringify(data, null, 2));
+        console.log('🔥 MY ORDERS ERROR:', error);
 
-  const filteredOrders = orders.filter((o) => o.status === activeTab);
-  const activeCount = orders.filter((o) => o.status === 'Ongoing').length;
-  const deliveredCount = orders.filter((o) => o.status === 'Completed').length;
-  const issuesCount = orders.filter((o) => o.status === 'Cancelled').length;
+        if (error) {
+          setLoading(false);
+          return;
+        }
+
+       setOrders(data || []);
+          setLoading(false);
+        };
+
+        fetchOrders();
+      }, [user?.id]);
+
+      
+     const normalizedOrders = useMemo(() => {
+        return orders
+        .map(normalizeOrder)
+        .filter(Boolean);
+       }, [orders]);
+
+      const filteredOrders = normalizedOrders.filter(
+        (o) => o.status === activeTab
+      );
+
+      const activeCount = normalizedOrders.filter(
+        (o) => o.status === 'Ongoing'
+      ).length;
+
+      const deliveredCount = normalizedOrders.filter(
+        (o) => o.status === 'Completed'
+      ).length;
+
+      const issuesCount = normalizedOrders.filter(
+        (o) => o.status === 'Cancelled'
+      ).length;
 
   const getStatusCTA = (status) => {
     switch (status) {
@@ -192,7 +225,7 @@ const MyOrdersScreen = () => {
               <View key={order.id} style={styles.orderCard}>
                 
                 <View style={styles.orderHeader}>
-                  <Text style={styles.orderId}>{order.id}</Text>
+                  <Text style={styles.orderId}> #{String(order.orderNumber).padStart(6, '0')}</Text>
                   <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[order.status].bg }]}>
                     <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[order.status].dot }]} />
                     <Text style={[styles.statusText, { color: STATUS_COLORS[order.status].text }]}>
