@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -60,12 +61,12 @@ function StatusBadge({ status }) {
   );
 }
 
-// ── Product Card ─────────────────────────────────────────────────────────────
+// ── Product Card ────────────────────────────────────────────────────────────────────
 function ProductCard({ item, onMenuPress }) {
   const stockStatus =
     (item.stock ?? 0) === 0
       ? 'out_of_stock'
-      : item.is_hidden
+      : !item.is_available
       ? 'hidden'
       : 'active';
 
@@ -125,12 +126,12 @@ function ProductContextMenu({ visible, item, onClose, onEdit, onToggleHidden, on
           </Pressable>
           <Pressable style={styles.menuRow} onPress={onToggleHidden}>
             <Ionicons
-              name={item.is_hidden ? 'eye-outline' : 'eye-off-outline'}
+              name={item.is_available ? 'eye-off-outline' : 'eye-outline'}
               size={18}
               color="#333"
             />
             <Text style={styles.menuRowText}>
-              {item.is_hidden ? 'Make Visible' : 'Hide Product'}
+              {item.is_available ? 'Hide Product' : 'Make Visible'}
             </Text>
           </Pressable>
           <View style={styles.menuDivider} />
@@ -189,8 +190,8 @@ export default function VendorProductsScreen() {
 
   // Computed stats
   const total = products.length;
-  const activeCount = products.filter(p => !p.is_hidden && (p.stock ?? 0) > 0).length;
-  const hiddenCount = products.filter(p => p.is_hidden).length;
+  const activeCount = products.filter(p => p.is_available && (p.stock ?? 0) > 0).length;
+  const hiddenCount = products.filter(p => !p.is_available).length;
   const outOfStockCount = products.filter(p => (p.stock ?? 0) === 0).length;
 
   const STATS = [
@@ -204,8 +205,8 @@ export default function VendorProductsScreen() {
   const filtered = products.filter(p => {
     const matchesSearch = p.name?.toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
-    if (activeTab === 'Active') return !p.is_hidden && (p.stock ?? 0) > 0;
-    if (activeTab === 'Hidden') return p.is_hidden;
+    if (activeTab === 'Active') return p.is_available && (p.stock ?? 0) > 0;
+    if (activeTab === 'Hidden') return !p.is_available;
     if (activeTab === 'Out of Stock') return (p.stock ?? 0) === 0;
     return true;
   });
@@ -227,17 +228,42 @@ export default function VendorProductsScreen() {
   const handleToggleHidden = async () => {
     if (!selectedProduct) return;
     setMenuVisible(false);
-    await supabase
+    const { error } = await supabase
       .from('products')
-      .update({ is_hidden: !selectedProduct.is_hidden })
-      .eq('id', selectedProduct.id);
+      .update({ is_available: !selectedProduct.is_available })
+      .eq('id', selectedProduct.id)
+      .eq('vendor_id', vendor?.id);
+
+    if (error) {
+      console.log('Error updating product visibility:', error);
+      Alert.alert('Could not update product visibility', error.message);
+      return;
+    }
+
     fetchProducts();
   };
 
   const handleDelete = async () => {
     if (!selectedProduct) return;
-    setMenuVisible(false);
-    await supabase.from('products').delete().eq('id', selectedProduct.id);
+    setMenuVisible(false); 
+    const { data, error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', selectedProduct.id)
+      .eq('vendor_id', vendor?.id)
+      .select('id');
+
+    if (error) {
+      console.log('Error deleting product:', error);
+      Alert.alert('Could not delete product', error.message);
+      return;
+    }
+
+    if (!data?.length) {
+      Alert.alert('Could not delete product', 'This product could not be found or you do not have permission to delete it.');
+      return;
+    }
+
     fetchProducts();
   };
 

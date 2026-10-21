@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { label: 'Messages',  icon: 'chatbubble-outline', active: false                            },
   { label: 'Profile',   icon: 'person-outline',     active: false                            },
 ];
-
+ 
 // ── Order status conf
 const STATUS_CONFIG = {
   pending:   { dot: '#FF6B00', label: 'Pending',   bg: '#FFF3EB', color: '#FF6B00' },
@@ -40,21 +40,10 @@ const NEXT_ACTION = {
   accepted:  { label: 'Start Preparing', next: 'preparing' },
   preparing: { label: 'Mark Ready',      next: 'ready'     },
   ready:     { label: 'Mark Delivered',  next: 'delivered' },
-};
+}; 
 
-// ── Mock data (swap for real Supabase query once orders table is ready) ───────
-const MOCK_ORDERS = [
-  {
-    id: 'ORD-A214',
-    customer_name: 'Chiamaka Obi',
-    items_summary: '2x Jollof Rice, 1x Chapman',
-    total: 5400,
-    status: 'pending',
-    created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-  },
-];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers
 function timeAgo(isoString) {
   const diff = Math.floor((Date.now() - new Date(isoString)) / 1000);
   if (diff < 60) return `${diff}s ago`;
@@ -67,7 +56,7 @@ function getInitials(name = '') {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
+// ── Status Badge 
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   return (
@@ -78,9 +67,10 @@ function StatusBadge({ status }) {
   );
 }
 
-// ── Order Card ────────────────────────────────────────────────────────────────
+// ── Order Card 
 function OrderCard({ order, onAction }) {
   const action = NEXT_ACTION[order.status];
+  const canDecline = !!action;
   const shortId = `#${String(order.order_number).padStart(6, '0')}`;
 
   return (
@@ -100,23 +90,37 @@ function OrderCard({ order, onAction }) {
       {/* Bottom row */}
       <View style={styles.cardBottomRow}>
         <Text style={styles.orderTotal}>{formatNaira(order.total)}</Text>
-        {action ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtn,
-              pressed && styles.actionBtnPressed,
-            ]}
-            onPress={() => onAction(order, action.next)}
-          >
-            <Text style={styles.actionBtnText}>{action.label}</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.completedTag}>
-            <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
-            <Text style={styles.completedText}>Done</Text>
-          </View>
-        )}
-      </View>
+        <View style={styles.actionGroup}>
+          {canDecline && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.declineBtn,
+                pressed && styles.declineBtnPressed,
+              ]}
+              onPress={() => onAction(order, 'cancelled')}
+            >
+              <Text style={styles.declineBtnText}>Decline</Text>
+            </Pressable>
+          )}
+
+          {action ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                pressed && styles.actionBtnPressed,
+              ]}
+              onPress={() => onAction(order, action.next)}
+            >
+              <Text style={styles.actionBtnText}>{action.label}</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.completedTag}>
+              <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+              <Text style={styles.completedText}>Done</Text>
+            </View>
+          )}
+        </View>
+      </View> 
     </View>
   );
 }
@@ -182,14 +186,18 @@ const fetchOrders = useCallback(async () => {
 
   setLoading(true);
 
-  const { data , error } = await supabase
+  const { data, error } = await supabase
   .from('order_packages')
-  .select(`*,
+  .select(`
+    *,
     orders (
-      *
+      *,
+      profiles!orders_profiles_fkey (
+        first_name,
+        last_name
+      )
     ),
-    order_items (*
-    )
+    order_items (*)
   `)
   .eq('vendor_id', vendor.id)
   .order('created_at', { ascending: false });
@@ -200,16 +208,16 @@ const fetchOrders = useCallback(async () => {
     return;
   }
 
-  console.log("VENDOR PACKAGES:", data);
+    console.log("VENDOR PACKAGES:", data);
 
     const normalizedOrders = data.map(pkg => ({
       id: pkg.orders?.id,
       order_number: pkg.orders?.order_number,
       package_id: pkg.id,
 
-      customer_name: 'Customer',
+      customer_name: pkg.orders?.profiles?.first_name?? 'Customer',
 
-      items_summary: (pkg.order_items ?? [])
+      items_summary: (pkg.order_items ?? [])       
         .map(item => `${item.quantity}x ${item.name}`)
         .join(', '),
 
@@ -243,37 +251,42 @@ const fetchOrders = useCallback(async () => {
 
 
 
-  const handleAction = (order, nextStatus) => {
-    const cfg = STATUS_CONFIG[nextStatus];
-    Alert.alert(
-      `Move to "${cfg?.label}"?`,
-      `Update order ${order.id} for ${order.customer_name}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            // Optimistic local update
+const handleAction = (order, nextStatus) => {
+  const cfg = STATUS_CONFIG[nextStatus];
+  const isDecline = nextStatus === 'cancelled';
+
+  Alert.alert(
+    isDecline ? 'Decline this order?' : `Move to "${cfg?.label}"?`,
+    isDecline
+      ? `Order ${order.id} for ${order.customer_name} will be marked as cancelled.`
+      : `Update order ${order.id} for ${order.customer_name}.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isDecline ? 'Decline Order' : 'Confirm',
+        style: isDecline ? 'destructive' : 'default',
+        onPress: async () => {
+          // Optimistic local update
+          setOrders(prev =>
+            prev.map(o => (o.id === order.id ? { ...o, status: nextStatus } : o))
+          );
+
+          const { error } = await supabase
+            .from('order_packages')
+            .update({ status: nextStatus })
+            .eq('id', order.package_id);
+
+          if (error) {
             setOrders(prev =>
-              prev.map(o => (o.id === order.id ? { ...o, status: nextStatus } : o))
+              prev.map(o => (o.id === order.id ? { ...o, status: order.status } : o))
             );
-
-            const { error } = await supabase
-              .from('order_packages')
-              .update({ status: nextStatus })
-              .eq('id', order.package_id);
-
-            if (error) {
-              setOrders(prev =>
-                prev.map(o => (o.id === order.id ? { ...o, status: order.status } : o))
-              );
-              Alert.alert('Update failed', 'Unable to update this order status. Please try again.');
-            }
-          },
+            Alert.alert('Update failed', 'Unable to update this order status. Please try again.');
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   // ── Derived counts & filter ───────────────────────────────────────────────
   const counts = {
@@ -680,4 +693,19 @@ const styles = StyleSheet.create({
   },
   navLabel: { fontSize: 10, color: '#999', fontWeight: '500' },
   navLabelActive: { color: PRIMARY, fontWeight: '700' },
+  actionGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  declineBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  declineBtnPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+    backgroundColor: '#FEEBEB',
+  },
+  declineBtnText: { fontSize: 13, fontWeight: '600', color: '#EF4444'
+  }
 });

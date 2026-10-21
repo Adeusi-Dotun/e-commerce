@@ -9,6 +9,7 @@ import { AddressContext } from '../context/AddressContext';
 import {formatNaira , getVendorInitials , getVendorAccent , computeOrderFees , validateCoupon ,} from '../utils/orders';
 import { supabase } from '../lib/supabase';
 import { AuthContext } from '../context/AuthContext';
+import * as webBrowser from 'expo-web-browser';
 
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
@@ -43,6 +44,24 @@ const PAYMENT_METHODS = [
 ];
 
 // formatNaira, getVendorInitials, getVendorAccent are imported from utils/orders
+
+// ── Edge Function error helper ────────────────────────────────────────────
+// supabase.functions.invoke() puts the real response body in error.context
+// (not in `data`) whenever the function returns a non-2xx status. This digs
+// the actual server message back out instead of showing a generic fallback.
+const parseFunctionError = async (error) => {
+  if (!error) return 'Please try again.';
+  if (error.context && typeof error.context.json === 'function') {
+    try {
+      const body = await error.context.json();
+      return body?.error ?? error.message ?? 'Please try again.';
+    } catch {
+      return error.message ?? 'Please try again.';
+    }
+  }
+  return error.message ?? 'Please try again.';
+};
+// ─────────────────────────────────────────────────────────────────────────
 
 const SectionLabel = ({ children, action, onAction }) => (
   <View style={styles.sectionLabelRow}>
@@ -93,86 +112,81 @@ const CheckoutScreen = () => {
     cartCount === 1 ? '1 item' : `${cartCount} items`;
 
 
-    const handlePlaceOrder = async () => {
+    const handlePayment = async () => {
 
-      console.log("Placed Order Successfully")
-      
       if (!selectedAddress) {
-        Alert.alert("Please select or add a delivery address");
+        Alert.alert('Please select or add a delivery address');
         return;
       }
 
-      const { data , error } = await supabase
-      .from("orders")
-      .insert([
-        {
-          buyer_id: user.id,
-          total: grandTotal,
-          delivery_address: selectedAddress,
-          note: deliveryNotes,
-          status: 'pending',
-        },
-      ])
-      .select()
-      .single();
-     
-      if (error) {
-        console.log( "Order Error:", error);
-        return;
-      }
-
-      console.log('Order Placed:', data);
-
-      for (const vendor of cart) {
-
-          const packageSubtotal = vendor.items.reduce(
-            (total, item) => total + (item.price * item.quantity),
-            0
-          );
-
-        const { data: packageData , error: packageError } = await supabase
-          .from('order_packages')
-          .insert ([
-            {
-              order_id: data.id,
-              vendor_id: vendor.vendorId,
-              status: 'pending',
-              subtotal: packageSubtotal, 
+      try {
+        const { data: initData, error: initError } = await supabase.functions.invoke(
+          'initialize-payment',
+          {
+            body: {
+              cart,
+              deliveryAddress: selectedAddress,
+              deliveryNotes,
+              couponCode: appliedCoupon?.code,
             },
-          ])
-          .select()
-          .single();
+          }
+        );
 
-          if (packageError) {
-            console.log("PACKAGE ERROR:", packageError);
-            return;
+        if (initError) {
+          const message = await parseFunctionError(initError);
+          Alert.alert('Could not start payment', message);
+          return;
+        }
+        if (!initData?.status) {
+          Alert.alert('Could not start payment', initData?.error ?? 'Please try again.');
+          return;
+        }
+
+        const { reference, data: paystackData } = initData;
+
+        if (paystackData?.authorization_url) {
+          await webBrowser.openBrowserAsync(paystackData.authorization_url);
+        }
+
+        const { data: verifyData, error: verifyError } = await supabase.functions.invoke(
+          'verify-payment',
+          { body: { reference } }
+        );
+
+        if (verifyError) {
+          console.log('VERIFY PAYMET ERROR:', verifyError.message);
+          console.log("ERROR NAME:", verifyError.name);
+
+          const message = await parseFunctionError(verifyError);
+
+            console.log('PARSED BACKEND ERROR:', message);
+
+          Alert.alert('Payment failed', message);
+
+          if (verifyError.context) {
+            try {
+              const responseBody = await verifyError.context.clone().text();
+
+              console.log("BACKEND ERROR BODY:", responseBody);
+            } catch (e) {
+              console.log("Could not read error body:", e);
+            }
           }
 
-          console.log('PACKAGE:', packageData);
+          throw verifyError; // Rethrow the error to be caught by the outer catch block
+          return;
+        }
 
-
-          const {error: itemError} = await supabase
-          .from('order_items')
-          .insert(
-            vendor.items.map((item) => ({
-              package_id: packageData.id,
-              product_id: item.id,
-              quantity: item.quantity,
-              price: item.price,
-              name:item.name,
-            }))
-          );
-
-          if(itemError) {
-            console.log("ITEMS ERROR:", itemError);
-            return; 
-          };
+        if (verifyData?.verified) {
+          navigation.replace('PlacedOrder', { orderId: verifyData.orderId });
+        } else {
+          Alert.alert('Payment failed', 'Please try again or use a different payment method.');
+        }
+      } catch (error) {
+        console.error('Payment error', error);
+        Alert.alert('Something went wrong', 'Please try again.');
       }
-
-      navigation.navigate('PlacedOrder' , { orderId: data.id });
-
-    }
-
+    };
 
 return (
     <SafeAreaView style={styles.safeArea}>
@@ -473,9 +487,7 @@ return (
               styles.placeOrderBtn,
               pressed && styles.placeOrderBtnPressed,
             ]}
-            onPress={() => {
-              handlePlaceOrder();
-            }}
+            onPress={handlePayment}
           >
             <Text style={styles.placeOrderText}>Place Order</Text>
             <View style={styles.placeOrderArrow}>
@@ -1047,7 +1059,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   emptyTitle: {
-    fontSize: 22,
+    fontSize: 22, 
     fontWeight: '700',
     color: TEXT,
     marginBottom: 10,

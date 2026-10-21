@@ -1,6 +1,6 @@
 import { AppText as Text } from '../components/CustomText';
 import React, { useRef, useEffect, useContext } from 'react';
-import {View,ScrollView,StyleSheet,Pressable,Image,  SafeAreaView,Platform,Animated,Share,} from 'react-native';
+import {View,ScrollView,StyleSheet,Pressable,Image,  SafeAreaView,Platform,Animated,Share,BackHandler,} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -100,6 +100,26 @@ const PlacedOrderScreen = () => {
   
 
   useEffect(() => {
+    const onBackPress = () => true;
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress
+    );
+
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+      }
+    });
+
+    return () => {
+      backHandler.remove();
+      unsubscribe();
+    };
+  }, [navigation]);
+
+  useEffect(() => {
     Animated.timing(fadeIn, {
       toValue: 1,
       duration: 500,
@@ -129,8 +149,8 @@ const PlacedOrderScreen = () => {
         .eq('id', orderId)
         .single();
       
-      console.log('PLACED ORDER:'. data);
-      console.log('PLACED ORDER ERROR:'. error);
+      console.log('PLACED ORDER:', data);
+      console.log('PLACED ORDER ERROR:', error);
       };
 
     fetchOrder();
@@ -157,15 +177,9 @@ const PlacedOrderScreen = () => {
 
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Pressable style={styles.iconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color={TEXT_COLOR} />
-        </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Order Confirmed</Text>
         </View>
-        <Pressable style={styles.iconBtn}>
-          <Ionicons name="ellipsis-vertical" size={20} color={TEXT_MUTED} />
-        </Pressable>
       </View>
 
       <ScrollView

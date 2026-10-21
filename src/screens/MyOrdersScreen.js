@@ -33,8 +33,11 @@ const normalizeOrder = (raw) => {
  
     const statusMap = {
     pending: 'Ongoing',
-    ongoing: 'Ongoing',
-    completed: 'Completed',
+    partial: 'Ongoing',
+    accepted: 'Ongoing',
+    preparing: 'Ongoing',
+    ready: 'Ongoing',
+    delivered: 'Completed',
     cancelled: 'Cancelled',
   };
 
@@ -73,7 +76,7 @@ const status = statusMap[raw.status] || 'Ongoing';
     vendors,
     items,
     preview,
-    date: raw.date || raw.orderDate || 'Just now',
+    date: raw.created_at || 'Just now',
     total: raw.total ?? raw.totalPaid ?? 0,
     packages: packages || [],
     estimatedDelivery: raw.estimatedDelivery,
@@ -174,30 +177,6 @@ const MyOrdersScreen = () => {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        {/* Stats Strip */}
-        <View style={styles.statsStrip}>
-          <View style={styles.statBox}>
-            <View style={styles.statHeader}>
-              <View style={[styles.statDot, { backgroundColor: '#F59E0B' }]} />
-              <Text style={styles.statLabel}>Active</Text>
-            </View>
-            <Text style={styles.statValue}>{activeCount}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <View style={styles.statHeader}>
-              <View style={[styles.statDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.statLabel}>Delivered</Text>
-            </View>
-            <Text style={styles.statValue}>{deliveredCount}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <View style={styles.statHeader}>
-              <View style={[styles.statDot, { backgroundColor: '#EF4444' }]} />
-              <Text style={styles.statLabel}>Issues</Text>
-            </View>
-            <Text style={styles.statValue}>{issuesCount}</Text>
-          </View>
-        </View>
 
         {/* Segmented Tabs */}
         <View style={styles.tabsContainer}>

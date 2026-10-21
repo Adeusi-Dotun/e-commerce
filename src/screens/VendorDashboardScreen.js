@@ -14,12 +14,6 @@ const PRIMARY = '#FF6B00';
 const BG = '#FAFAF9';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const LOW_STOCK = [
-  { id: '1', name: 'Jollof Rice Pack', left: 3, icon: 'restaurant-outline', iconBg: '#FFF0E8' },
-  { id: '2', name: 'Chicken Wrap', left: 5, icon: 'fast-food-outline', iconBg: '#FEF9C3' },
-  { id: '3', name: 'Coke (50cl)', left: 2, icon: 'wine-outline', iconBg: '#FEE2E2' },
-];
-
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: 'grid', active: true },
   { label: 'Products', icon: 'cube-outline', active: false, route: 'VendorProducts' },
@@ -103,6 +97,45 @@ function OrderStatusBadge({ status, variant }) {
       <Text style={[styles.statusText, { color }]}>{status}</Text>
     </View>
   );
+}
+
+
+const STATUS_VARIIANT = {
+  pending : 'preparing',
+  accepted: 'preparing',
+  preparing: 'preparing',
+  ready: 'ready',
+  delivered: 'delivered',
+  cancelled: 'preparing',
+};
+
+function normalizeRecentOrder(pkg) {
+  const profile = pkg.orders?.profiles;
+  const customerName = profile?.first_name || 'Customer';
+  const initials = customerName
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+    const itemSummary = (pkg.order_items ?? [])
+    .map(item => `${item.quantity} x ${item.name}`)
+    .join(', ');
+
+    return {
+      id: pkg.id,
+      avatarBg: '#FFF0E8',
+      initials,
+      name: customerName,
+      items: itemSummary,
+      price: `₦${Number(pkg.subtotal?? 0).toLocaleString()}`,
+      orderedAt: pkg.created_at
+        ? `${new Date(pkg.created_at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })} • ${new Date(pkg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+        : '',
+      status: pkg.status,
+      statusStyle: STATUS_VARIIANT[pkg.status] || 'preparing',
+    };
 }
 
 export default function VendorDashboardScreen() {
@@ -233,7 +266,11 @@ export default function VendorDashboardScreen() {
       .select(`
         *,
         orders (
-          *
+          *,
+          profiles!orders_profiles_fkey (
+            first_name,
+            last_name
+          )
         ),
         order_items (
           *
@@ -248,7 +285,37 @@ export default function VendorDashboardScreen() {
       return [];
     }
 
+    console.log("RECENT ORDERS:", data);
+
     return data || [];
+  };
+
+  //fetch total revenue and orders today for the vendor
+
+  const fetchTodayStats = async (vendorId) => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+
+    const { data, error} = await supabase
+      .from ('order_packages')
+      .select('id, status, subtotal')
+      .eq('vendor_id', vendorId)
+      .gte('created_at', startOfDay)
+      .lt('created_at', endOfDay);
+
+      if (error) {
+        console.log( "Error fetching today's stats:", error);
+        return { totalRevenue: 0, ordersToday: 0 };
+      }
+
+      const packages = data || [];
+
+      const totalRevenue = packages
+        .filter(pkg => pkg.status === 'delivered')
+        .reduce ((sum, pkg) => sum + Number(pkg.subtotal), 0);
+
+        return { totalRevenue, ordersToday: packages.length };
   };
 
   const fetchDashboardData = async () => {
@@ -264,18 +331,20 @@ export default function VendorDashboardScreen() {
 
       const vendorId = vendorData.id;
 
-      const [ totalProducts, lowStockProducts, recentVendorsOrders,] = await Promise.all([
+      const [ totalProducts, lowStockProducts, recentVendorsOrders, todayStats] = await Promise.all([
         fetchTotalProducts(vendorId),
         fetchLowStock(vendorId),
         fetchRecentOrders(vendorId),
+        fetchTodayStats(vendorId),
       ]);
 
       setLowStock(lowStockProducts);
-      setRecentOrders(recentVendorsOrders);
+      setRecentOrders(recentVendorsOrders.map(normalizeRecentOrder));
 
       setStats ({
-        totalRevenue: 0,
-        ordersToday: 0,
+      
+        totalRevenue: todayStats.totalRevenue,
+        ordersToday: todayStats.ordersToday,
         totalProducts: totalProducts,
         averageRating: 0,
       });
@@ -349,6 +418,7 @@ export default function VendorDashboardScreen() {
               <View style={styles.orderInfo}>
                 <Text style={styles.orderName}>{order.name}</Text>
                 <Text style={styles.orderItems}>{order.items}</Text>
+                <Text style={styles.orderItems}>{order.orderedAt}</Text>
               </View>
               <View style={styles.orderRight}>
                 <Text style={styles.orderPrice}>{order.price}</Text>
@@ -367,19 +437,19 @@ export default function VendorDashboardScreen() {
           </Pressable>
         </View>
         <View style={styles.lowStockCard}>
-          {LOW_STOCK.map((item, index) => (
+          {lowStock.map((item, index) => (
             <View
               key={item.id}
-              style={[styles.lowStockRow, index < LOW_STOCK.length - 1 && styles.lowStockBorder]}
+              style={[styles.lowStockRow, index < lowStock.length - 1 && styles.lowStockBorder]}
             >
-              <View style={[styles.lowStockIcon, { backgroundColor: item.iconBg }]}>
-                <Ionicons name={item.icon} size={18} color={PRIMARY} />
+              <View style={[styles.lowStockIcon, { backgroundColor: '#FFF0E8' }]}>
+                <Ionicons name="cube-outline" size={18} color={PRIMARY} />
               </View>
               <View style={styles.lowStockInfo}>
                 <Text style={styles.lowStockName}>{item.name}</Text>
                 <View style={styles.lowStockWarning}>
                   <Ionicons name="warning-outline" size={12} color={PRIMARY} />
-                  <Text style={styles.lowStockLeft}>Only {item.left} left</Text>
+                  <Text style={styles.lowStockLeft}>Only {item.stock ?? 0} left</Text>
                 </View>
               </View>
               <Pressable style={styles.restockBtn}>

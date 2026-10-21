@@ -3,9 +3,59 @@ import HomeScreen from '../screens/HomeScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
 import AccountScreen from "../screens/AccountScreen";
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, View } from 'react-native';
+import { useContext } from 'react';
+import { CartContext } from '../context/CartContext';
+import { Pressable, View, Text } from 'react-native';
 
 const Tab = createBottomTabNavigator();
+
+function CartHeaderButton({ navigation }) {
+    const { cartCount } = useContext(CartContext);
+
+    return (
+        <Pressable
+            onPress={() => navigation.navigate('Cart')}
+            style={{ marginRight: 16 }}
+        >
+            <View style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: '#F0F0F0',
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}>
+                <Ionicons name="cart-outline" size={26} color="#111" />
+                {cartCount > 0 && (
+                    <View style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        backgroundColor: '#FF6B00',
+                        borderRadius: 10,
+                        minWidth: 18,
+                        height: 18,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        paddingHorizontal: 4,
+                        borderWidth: 1.5,
+                        borderColor: '#FFFFFF',
+                    }}>
+                        <Text style={{
+                            color: '#FFFFFF',
+                            fontSize: 10,
+                            fontWeight: '700',
+                            textAlign: 'center',
+                            includeFontPadding: false,
+                        }}>
+                            {cartCount > 99 ? '99+' : cartCount}
+                        </Text>
+                    </View>
+                )}
+            </View>
+        </Pressable>
+    );
+}
 
 export default function TabNavigator(){
 
@@ -27,23 +77,7 @@ export default function TabNavigator(){
                         />
                     )
                 },
-                headerRight: () => (
-                    <Pressable
-                        onPress={() => navigation.navigate('Cart')}
-                        style={{ marginRight: 16 }}
-                    >
-                        <View style={{
-                            width: 42,
-                            height: 42,
-                            borderRadius: 21,
-                            backgroundColor: '#F0F0F0',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            <Ionicons name="cart-outline" size={26} color="#111" />
-                        </View>
-                    </Pressable>
-                ),
+                headerRight: () => <CartHeaderButton navigation={navigation} />,
             })} />
             <Tab.Screen name= 'Categories' component={CategoriesScreen} 
             options={{

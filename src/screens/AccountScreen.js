@@ -19,7 +19,7 @@ const AccountScreen = () => {
     if(user) {
       fetchApplication();
     }
-  }, [user]);
+  }, [user]); 
 
 
   const fetchApplication = async () => {
@@ -39,7 +39,7 @@ const AccountScreen = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigation.reset({ index: 0, routes: [{ name: 'AccountInfo' }] });
+    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
   };
 
   return (
@@ -81,6 +81,7 @@ const AccountScreen = () => {
                 <Text style={{ color: 'grey' }}>Keep your wishlist synced across devices</Text>
               </View>
             </View>
+            
           </View>
 
           <View style={styles.bottom}>

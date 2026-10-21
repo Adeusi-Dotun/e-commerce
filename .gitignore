@@ -30,8 +30,12 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+
+# environment variables
+.env
+.env.*
+!.env.example
+
 
 # typescript
 *.tsbuildinfo
@@ -39,3 +43,15 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+
+# editor settings
+.vscode/
+
+# Supabase CLI local files
+supabase/.temp/
+supabase/.env
+
+# Android/Firebase config (add if you ever use these)
+google-services.json
+GoogleService-Info.plist
