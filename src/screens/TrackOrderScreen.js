@@ -1,516 +1,522 @@
-import { AppText as Text } from '../components/CustomText';
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   Pressable,
-  Image,
-  SafeAreaView,
-  Platform,
+  Animated,
+  Easing,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import Svg, {
-  Circle,
-  Defs,
-  G,
-  LinearGradient,
-  Line,
-  Path,
-  Rect,
-  Stop,
-} from 'react-native-svg';
+import { AppText as Text } from '../components/CustomText';
 import { formatNaira } from '../utils/orders';
+import { supabase } from '../lib/supabase';
 
-const BG = '#F3F3F3';
+/* ────────────────────────────────────────────────────────────────────────────
+ * Tokens. Change BRAND once and the whole screen follows.
+ * ──────────────────────────────────────────────────────────────────────────── */
+const BRAND = '#A83B10'; // swap for whichever orange you standardise on
+const BRAND_SOFT = 'rgba(168, 59, 16, 0.09)';
+const BRAND_RING = 'rgba(168, 59, 16, 0.18)';
+const BG = '#F6F5F3';
 const CARD = '#FFFFFF';
-const TEXT = '#111111';
-const TEXT_MUTED = '#5E5651';
-const TEXT_LIGHT = '#9A948C';
-const BORDER = 'rgba(17, 17, 17, 0.08)';
-const PRIMARY = '#B53B18';
-const ORANGE = '#FF5A00';
-const BLUE = '#0057D9';
-const BLUE_SOFT = 'rgba(0, 87, 217, 0.09)';
-const ORANGE_SOFT = 'rgba(255, 90, 0, 0.12)';
-const SHADOW = 'rgba(17, 17, 17, 0.08)';
+const TEXT = '#161412';
+const TEXT_MUTED = '#6B645D';
+const TEXT_LIGHT = '#A39C94';
+const LINE = '#E4E0DA';
+const DANGER = '#B3261E';
+const DANGER_SOFT = 'rgba(179, 38, 30, 0.08)';
 
-const fallbackOrder = {
-  id: 'ORD-2026-X8Y9',
-  status: 'Ongoing',
-  vendors: 3,
-  items: 5,
-  total: 162250,
-  packages: [],
+/* ────────────────────────────────────────────────────────────────────────────
+ * Status model. Keys match order_packages.status in the database, so wiring
+ * realtime later only changes where `status` comes from.
+ * ──────────────────────────────────────────────────────────────────────────── */
+const STEPS = [
+  { key: 'pending', title: 'Order placed', detail: 'Your order was sent to the vendor' },
+  { key: 'accepted', title: 'Order accepted', detail: 'The vendor confirmed your order' },
+  { key: 'preparing', title: 'Preparing', detail: 'Your order is being made' },
+  { key: 'ready', title: 'Ready', detail: 'Your order is ready' },
+  { key: 'delivered', title: 'Delivered', detail: 'Your order has arrived' },
+];
+
+const STEP_KEYS = STEPS.map((s) => s.key);
+
+const BANNERS = {
+  pending: { icon: 'hourglass-outline', text: (v) => `Waiting for ${v} to accept your order` },
+  accepted: { icon: 'checkmark-circle-outline', text: (v) => `${v} accepted your order` },
+  preparing: { icon: 'restaurant-outline', text: () => 'Your order is being prepared' },
+  ready: { icon: 'bag-check-outline', text: () => 'Your order is ready' },
+  delivered: { icon: 'happy-outline', text: () => 'Your order has been delivered' },
+  cancelled: { icon: 'close-circle-outline', text: () => 'This order was cancelled' },
 };
 
-// formatNaira is imported from utils/orders
+// Accepts DB values plus the older labels the app used before.
+const normalizeStatus = (raw) => {
+  const value = String(raw || '').trim().toLowerCase();
+  if (STEP_KEYS.includes(value) || value === 'cancelled') return value;
 
-const flattenItems = (packages = []) =>
-  packages.flatMap((vendor) =>
-    Array.isArray(vendor?.items)
-      ? vendor.items.map((item) => ({
-          ...item,
-          vendorName: vendor.vendorName,
-        }))
-      : []
-  );
-
-const computeItemsCountFromPackages = (packages = []) =>
-  flattenItems(packages).reduce(
-    (sum, item) => sum + (Number(item?.quantity) || 1),
-    0
-  );
-
-const getStatusMeta = (status = 'Ongoing') => {
-  switch (status) {
-    case 'Completed':
-      return {
-        label: 'Delivered',
-        tone: '#2D6A4F',
-        bg: 'rgba(45, 106, 79, 0.1)',
-        border: 'rgba(45, 106, 79, 0.18)',
-      };
-    case 'Cancelled':
-      return {
-        label: 'Issue Open',
-        tone: '#C0392B',
-        bg: 'rgba(192, 57, 43, 0.1)',
-        border: 'rgba(192, 57, 43, 0.18)',
-      };
-    default:
-      return {
-        label: 'In Transit',
-        tone: PRIMARY,
-        bg: ORANGE_SOFT,
-        border: 'rgba(255, 90, 0, 0.22)',
-      };
-  }
+  const legacy = {
+    'order confirmed': 'pending',
+    'payment received': 'accepted',
+    'vendor preparing': 'preparing',
+    'out for delivery': 'ready',
+    completed: 'delivered',
+    ongoing: 'pending',
+  };
+  return legacy[value] || 'pending';
 };
 
-const getDeliveryText = (order) => {
-  if (typeof order?.estimatedDelivery === 'string') {
-    return order.estimatedDelivery;
-  }
-
-  if (order?.estimatedDelivery?.to) {
-    return order.estimatedDelivery.to;
-  }
-
-  if (order?.estimatedDelivery?.from) {
-    return order.estimatedDelivery.from;
-  }
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const date = tomorrow.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  return `Tomorrow, ${date}`;
+const formatTime = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' });
 };
 
-const getOrderSummary = (order) => {
-  const packages = Array.isArray(order?.packages) ? order.packages : [];
-  const items = flattenItems(packages);
-  const vendorCount =
-    Number(order?.vendors) || (packages.length > 0 ? packages.length : 0);
-  const itemCount =
-    Number(order?.items) ||
-    (packages.length > 0 ? computeItemsCountFromPackages(packages) : 0);
+const statusLabel = (key) =>
+  key === 'cancelled'
+    ? 'Cancelled'
+    : STEPS.find((s) => s.key === normalizeStatus(key))?.title || 'Order placed';
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Data layer
+ * mapOrder is the ONE place that knows your column names. If a field shows up
+ * empty on screen, fix its name here and nowhere else.
+ * ──────────────────────────────────────────────────────────────────────────── */
+// The order's delivery_address column is text. Checkout saves the address
+// object as a JSON string, so parse it before reading fields.
+const formatDeliveryAddress = (raw) => {
+  if (!raw) return '';
+
+  let addr = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('{')) return trimmed; // already plain text
+    try {
+      addr = JSON.parse(trimmed);
+    } catch (e) {
+      return '';
+    }
+  }
+  if (typeof addr !== 'object') return '';
+
+  const line =
+    addr.addressLine ??
+    addr.address_line ??
+    addr.locationName ??
+    addr.address ??
+    addr.name ??
+    '';
+  return [line, addr.landmark].filter(Boolean).join(' \u00B7 ');
+};
+
+const mapOrder = (raw) => {
+  const packages = (raw.order_packages || []).map((pkg) => ({
+    id: pkg.id,
+    vendorId: pkg.vendor_id,
+    vendorName: pkg.vendors?.business_name || pkg.vendors?.name || 'Vendor', // CHECK column
+    vendorLocation: pkg.vendors?.campus_location || pkg.vendors?.address || '', // CHECK column
+    status: pkg.status,
+    items: (pkg.order_items || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: Number(item.price),
+      quantity: item.quantity,
+    })),
+  }));
 
   return {
+    id: raw.id,
+    orderNumber: raw.order_number,
+    total: raw.total ?? raw.total_paid ?? 0, // CHECK column
+    deliveryAddress: formatDeliveryAddress(raw.delivery_address ?? raw.address),
+    timestamps: { pending: raw.created_at },
     packages,
-    items,
-    vendorCount: vendorCount || fallbackOrder.vendors,
-    itemCount: itemCount || fallbackOrder.items,
-    total: order?.total ?? order?.totalPaid ?? fallbackOrder.total,
   };
 };
 
-// Ordered list of statuses that map 1-to-1 with timeline steps.
-// Used by both buildTimeline and the dev simulation.
-const STATUS_SEQUENCE = [
-  'Order Confirmed',
-  'Payment Received',
-  'Vendor Preparing',
-  'Out for Delivery',
-  'Completed',
-];
+const EMPTY_ORDER = { id: '', packages: [], timestamps: {}, total: 0 };
 
-const TIMELINE_META = [
-  { title: 'Order Confirmed',  detail: 'Payment pending…'                },
-  { title: 'Payment Received', detail: 'Vendor has been notified.'        },
-  { title: 'Vendor Preparing', detail: 'Your items are being packed.'     },
-  { title: 'Out for Delivery', detail: 'Package left facility in Lekki.', meta: 'Estimated arrival soon' },
-  { title: 'Delivered',        detail: 'Package delivered successfully.'  },
-];
+// Fetch once, then listen for status changes on this order's packages.
+const useTrackedOrder = (orderId) => {
+  const [order, setOrder] = useState(EMPTY_ORDER);
+  const [loading, setLoading] = useState(Boolean(orderId));
+  const [error, setError] = useState(null);
 
-/**
- * Builds the timeline array whose step states are derived entirely from
- * the current status position — no hard-coded flags needed.
- */
-const buildTimeline = (status) => {
-  const activeIndex = STATUS_SEQUENCE.indexOf(status);
-
-  return TIMELINE_META.map((step, index) => {
-    let state;
-    let icon;
-
-    if (index < activeIndex) {
-      // Steps before the current one are done
-      state = 'done';
-      icon  = 'checkmark';
-    } else if (index === activeIndex) {
-      // The active step
-      if (status === 'Completed') {
-        state = 'done';
-        icon  = 'checkmark';
-      } else {
-        state = 'current';
-        icon  = index === 3 ? 'bus' : 'time-outline';
-      }
-    } else {
-      // Steps after the current one are still pending
-      state = 'pending';
-      icon  = null;
+  useEffect(() => {
+    if (!orderId) {
+      setLoading(false);
+      return undefined;
     }
 
-    return { ...step, state, icon };
-  });
+    let active = true;
+
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from('orders')
+        .select(
+          `
+          *,
+          order_packages (
+            *,
+            vendors (*),
+            order_items (*)
+          )
+        `
+        )
+        .eq('id', orderId)
+        .single();
+
+      if (!active) return;
+      if (fetchError || !data) setError(fetchError || new Error('Order not found'));
+      else setOrder(mapOrder(data));
+      setLoading(false);
+    })();
+
+    const channel = supabase
+      .channel(`track-order-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'order_packages',
+          filter: `order_id=eq.${orderId}`, // CHECK: FK column name on order_packages
+        },
+        (payload) => {
+          setOrder((prev) => ({
+            ...prev,
+            packages: prev.packages.map((pkg) =>
+              pkg.id === payload.new.id ? { ...pkg, status: payload.new.status } : pkg
+            ),
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [orderId]);
+
+  return { order, loading, error };
 };
 
-const SurfaceCard = ({ children, style }) => (
-  <View style={[styles.surfaceCard, style]}>{children}</View>
-);
+/* ────────────────────────────────────────────────────────────────────────────
+ * Pieces
+ * ──────────────────────────────────────────────────────────────────────────── */
+const PulseRing = () => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(0.7)).current;
 
-const MapPreview = ({ driverName }) => (
-  <View style={styles.mapCard}>
-    <Svg style={styles.mapSvg} viewBox="0 0 360 220">
-      <Defs>
-        <LinearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#243837" />
-          <Stop offset="0.55" stopColor="#60716F" />
-          <Stop offset="1" stopColor="#C6CBC4" />
-        </LinearGradient>
-      </Defs>
-      <Rect width="360" height="220" rx="8" fill="url(#mapBg)" />
-      <G opacity="0.22" stroke="#FFFFFF" strokeWidth="1">
-        <Line x1="28" y1="14" x2="28" y2="208" />
-        <Line x1="72" y1="10" x2="72" y2="206" />
-        <Line x1="118" y1="12" x2="118" y2="216" />
-        <Line x1="164" y1="0" x2="164" y2="220" />
-        <Line x1="212" y1="12" x2="212" y2="218" />
-        <Line x1="266" y1="4" x2="266" y2="220" />
-        <Line x1="316" y1="0" x2="316" y2="214" />
-        <Line x1="6" y1="38" x2="354" y2="38" />
-        <Line x1="0" y1="78" x2="360" y2="78" />
-        <Line x1="12" y1="116" x2="348" y2="116" />
-        <Line x1="0" y1="154" x2="352" y2="154" />
-        <Line x1="18" y1="192" x2="360" y2="192" />
-      </G>
-      <G opacity="0.26" stroke="#E8F0EA" strokeWidth="2" fill="none">
-        <Path d="M18 178 C70 150, 96 154, 126 128 S198 78, 250 90 S318 90, 344 54" />
-        <Path d="M44 32 C92 48, 105 66, 142 64 S215 42, 304 28" />
-        <Path d="M62 206 C88 170, 115 166, 150 170 S242 198, 324 138" />
-      </G>
-      <Path
-        d="M108 42 L108 92 L172 92 L172 132 L222 132 L222 164 L276 164 L276 124 L324 124"
-        fill="none"
-        stroke="#FF7A1A"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Circle cx="108" cy="42" r="6" fill="#FF7A1A" />
-      <Circle cx="324" cy="124" r="9" fill="#FF5A00" />
-      <Circle cx="324" cy="124" r="15" stroke="#FF5A00" strokeWidth="2" opacity="0.28" />
-    </Svg>
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.timing(scale, {
+          toValue: 1.9,
+          duration: 1400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scale, opacity]);
 
-    <View style={styles.mapShade} />
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.pulseRing, { opacity, transform: [{ scale }] }]}
+    />
+  );
+};
 
-    <View style={styles.driverCard}>
-      <View style={styles.driverIcon}>
-        <Ionicons name="bicycle" size={22} color={PRIMARY} />
+const StatusBanner = ({ status, vendorName }) => {
+  const banner = BANNERS[status];
+  const cancelled = status === 'cancelled';
+
+  return (
+    <View style={[styles.banner, cancelled && { backgroundColor: DANGER_SOFT }]}>
+      <View style={[styles.bannerIcon, cancelled && { backgroundColor: DANGER }]}>
+        <Ionicons name={banner.icon} size={22} color="#FFFFFF" />
       </View>
-      <View style={styles.driverBody}>
-        <Text style={styles.driverLabel}>DRIVER</Text>
-        <Text style={styles.driverName} numberOfLines={1}>
-          {driverName}
+      <Text style={styles.bannerText}>{banner.text(vendorName)}</Text>
+    </View>
+  );
+};
+
+const RouteCard = ({ vendorName, vendorLocation, deliveryAddress }) => (
+  <View style={styles.card}>
+    <View style={styles.routeRow}>
+      <View style={styles.routeRail}>
+        <View style={[styles.routeDot, { backgroundColor: BRAND }]} />
+        <View style={styles.routeConnector} />
+      </View>
+      <View style={styles.routeBody}>
+        <Text style={styles.routeLabel}>Pick up from</Text>
+        <Text style={styles.routeTitle} numberOfLines={1}>
+          {vendorName}
+        </Text>
+        {vendorLocation ? (
+          <Text style={styles.routeDetail} numberOfLines={2}>
+            {vendorLocation}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+
+    <View style={styles.routeRow}>
+      <View style={styles.routeRail}>
+        <View style={[styles.routeDot, styles.routeDotHollow]} />
+      </View>
+      <View style={styles.routeBody}>
+        <Text style={styles.routeLabel}>Deliver to</Text>
+        <Text style={styles.routeDetailStrong} numberOfLines={2}>
+          {deliveryAddress || 'No address provided'}
         </Text>
       </View>
     </View>
   </View>
 );
 
-const EstimateCard = ({ deliveryText }) => (
-  <SurfaceCard style={styles.estimateCard}>
-    <View style={styles.estimateIcon}>
-      <Ionicons name="calendar-clear-outline" size={24} color={BLUE} />
-    </View>
-    <View style={styles.estimateBody}>
-      <Text style={styles.estimateLabel}>ESTIMATED DELIVERY</Text>
-      <Text style={styles.estimateText}>{deliveryText}</Text>
-    </View>
-  </SurfaceCard>
-);
-
-const TimelineStep = ({ step, isLast }) => {
-  const isDone = step.state === 'done';
-  const isCurrent = step.state === 'current';
-  const isAlert = step.state === 'alert';
-  const isPending = step.state === 'pending';
+const TimelineRow = ({ step, state, time, isLast }) => {
+  const done = state === 'done';
+  const current = state === 'current';
+  const pending = state === 'pending';
 
   return (
-    <View style={styles.timelineRow}>
-      <View style={styles.timelineRail}>
-        <View
-          style={[
-            styles.timelineDot,
-            isDone && styles.timelineDotDone,
-            isCurrent && styles.timelineDotCurrent,
-            isAlert && styles.timelineDotAlert,
-            isPending && styles.timelineDotPending,
-          ]}
-        >
-          {step.icon ? (
-            <Ionicons
-              name={step.icon}
-              size={isCurrent ? 16 : 15}
-              color={isPending ? TEXT_LIGHT : '#FFFFFF'}
-            />
-          ) : null}
-        </View>
-        {!isLast ? (
+    <View style={styles.tlRow}>
+      <View style={styles.tlRail}>
+        <View style={styles.tlDotWrap}>
+          {current ? <PulseRing /> : null}
           <View
             style={[
-              styles.timelineLine,
-              isPending ? styles.timelineLineMuted : styles.timelineLineActive,
+              styles.tlDot,
+              (done || current) && styles.tlDotFilled,
+              current && styles.tlDotCurrent,
+              pending && styles.tlDotPending,
             ]}
-          />
+          >
+            {done ? <Ionicons name="checkmark" size={14} color="#FFFFFF" /> : null}
+            {current ? <View style={styles.tlDotCore} /> : null}
+          </View>
+        </View>
+        {!isLast ? (
+          <View style={[styles.tlLine, done && styles.tlLineDone]} />
         ) : null}
       </View>
 
-      <View style={styles.timelineBody}>
-        <Text
-          style={[
-            styles.timelineTitle,
-            isCurrent && styles.timelineTitleCurrent,
-            isPending && styles.timelineTitlePending,
-          ]}
-        >
+      <View style={styles.tlBody}>
+        <Text style={[styles.tlTitle, pending && { color: TEXT_LIGHT }]}>
           {step.title}
         </Text>
-        <Text
-          style={[
-            styles.timelineDetail,
-            isPending && styles.timelineDetailPending,
-          ]}
-        >
+        <Text style={[styles.tlDetail, pending && { color: TEXT_LIGHT }]}>
           {step.detail}
         </Text>
-        {step.meta ? <Text style={styles.timelineMeta}>{step.meta}</Text> : null}
       </View>
+
+      {time ? <Text style={styles.tlTime}>{time}</Text> : null}
     </View>
   );
 };
 
-const TrackingHistory = ({ status }) => {
-  const timeline = useMemo(() => buildTimeline(status), [status]);
+const Timeline = ({ status, timestamps }) => {
+  const activeIndex = STEP_KEYS.indexOf(status);
 
   return (
-    <SurfaceCard style={styles.historyCard}>
-      <Text style={styles.sectionTitle}>Tracking History</Text>
-      <View style={styles.timeline}>
-        {timeline.map((step, index) => (
-          <TimelineStep
-            key={step.title}
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>Order progress</Text>
+      {STEPS.map((step, index) => {
+        let state = 'pending';
+        if (index < activeIndex) state = 'done';
+        else if (index === activeIndex) state = status === 'delivered' ? 'done' : 'current';
+
+        return (
+          <TimelineRow
+            key={step.key}
             step={step}
-            isLast={index === timeline.length - 1}
+            state={state}
+            time={state === 'pending' ? null : formatTime(timestamps?.[step.key])}
+            isLast={index === STEPS.length - 1}
           />
-        ))}
-      </View>
-    </SurfaceCard>
+        );
+      })}
+    </View>
   );
 };
 
-const ProductThumb = ({ item, overflowLabel }) => {
-  if (overflowLabel) {
-    return (
-      <View style={styles.thumbOverflow}>
-        <Text style={styles.thumbOverflowText}>{overflowLabel}</Text>
-      </View>
-    );
-  }
+const CancelledCard = ({ time }) => (
+  <View style={styles.card}>
+    <Text style={styles.sectionTitle}>Order cancelled</Text>
+    <Text style={styles.cancelledBody}>
+      This order was cancelled{time ? ` at ${time}` : ''}. If you were charged, the
+      refund will go back to your original payment method.
+    </Text>
+  </View>
+);
 
-  if (!item?.image) {
-    return (
-      <View style={styles.thumbPlaceholder}>
-        <Ionicons name="bag-handle-outline" size={22} color={TEXT_LIGHT} />
-      </View>
-    );
-  }
+const SummaryCard = ({ packages, total }) => (
+  <View style={styles.card}>
+    <View style={styles.summaryHeader}>
+      <Text style={styles.sectionTitleInline}>Your order</Text>
+      <Text style={styles.summaryTotal}>{formatNaira(total)}</Text>
+    </View>
 
-  return <Image source={{ uri: item.image }} style={styles.productThumb} />;
-};
-
-const OrderSummary = ({ summary }) => {
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const previewItems = summary.items.slice(0, 2);
-  const previewCount = previewItems.length;
-  const remaining = Math.max(summary.itemCount - previewCount, 0);
-  const emptyPreviewCount = previewCount === 0 ? Math.min(summary.itemCount, 2) : 0;
-
-  return (
-    <SurfaceCard style={styles.summaryCard}>
-      <View style={styles.summaryHeader}>
-        <View style={styles.summaryHeaderText}>
-          <Text style={styles.summaryTitle}>Order Summary</Text>
-          <Text style={styles.summaryMeta}>
-            {summary.vendorCount} Vendor{summary.vendorCount === 1 ? '' : 's'} {'\u2022'}{' '}
-            {summary.itemCount} Item{summary.itemCount === 1 ? '' : 's'}
-          </Text>
-        </View>
-        <Text style={styles.summaryTotal}>{formatNaira(summary.total)}</Text>
-      </View>
-
-      <View style={styles.thumbsRow}>
-        {previewItems.map((item) => (
-          <ProductThumb key={`${item.vendorName}-${item.id}`} item={item} />
-        ))}
-        {Array.from({ length: emptyPreviewCount }).map((_, index) => (
-          <ProductThumb key={`empty-${index}`} />
-        ))}
-        {remaining > 0 ? <ProductThumb overflowLabel={`+${remaining}`} /> : null}
-      </View>
-
-      {detailsOpen ? (
-        <View style={styles.detailsList}>
-          {summary.packages.length === 0 ? (
-            <View style={styles.detailEmptyRow}>
-              <Ionicons name="cube-outline" size={18} color={TEXT_LIGHT} />
-              <Text style={styles.detailEmptyText}>Items are being prepared.</Text>
+    {packages.length === 0 ? (
+      <Text style={styles.routeDetail}>Order details will show here.</Text>
+    ) : (
+      packages.map((pkg, pIndex) => (
+        <View key={pkg.vendorId || pkg.vendorName || pIndex} style={styles.pkg}>
+          {packages.length > 1 ? (
+            <Text style={styles.pkgVendor}>
+              {pkg.vendorName}: {statusLabel(pkg.status)}
+            </Text>
+          ) : null}
+          {(pkg.items || []).map((item, iIndex) => (
+            <View key={item.id || iIndex} style={styles.itemRow}>
+              <Text style={styles.itemQty}>{item.quantity || 1}×</Text>
+              <Text style={styles.itemName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {typeof item.price === 'number' ? (
+                <Text style={styles.itemPrice}>
+                  {formatNaira(item.price * (item.quantity || 1))}
+                </Text>
+              ) : null}
             </View>
-          ) : (
-            summary.packages.map((vendor) => (
-              <View key={vendor.vendorId || vendor.vendorName} style={styles.vendorDetail}>
-                <Text style={styles.vendorDetailName}>{vendor.vendorName}</Text>
-                {vendor.items.map((item) => (
-                  <View key={item.id} style={styles.detailItemRow}>
-                    <Text style={styles.detailItemName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.detailItemQty}>x{item.quantity || 1}</Text>
-                  </View>
-                ))}
-              </View>
-            ))
-          )}
+          ))}
         </View>
-      ) : null}
+      ))
+    )}
+  </View>
+);
 
-      <Pressable
-        style={styles.viewDetailsBtn}
-        onPress={() => setDetailsOpen((open) => !open)}
-      >
-        <Text style={styles.viewDetailsText}>
-          {detailsOpen ? 'Hide Details' : 'View Details'}
-        </Text>
-        <Ionicons
-          name={detailsOpen ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={BLUE}
-        />
-      </Pressable>
-    </SurfaceCard>
-  );
-};
-
+/* ────────────────────────────────────────────────────────────────────────────
+ * Screen
+ * ──────────────────────────────────────────────────────────────────────────── */
 const TrackOrderScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const order = route.params?.order || fallbackOrder;
+  const orderId = route.params?.orderId ?? route.params?.order?.id;
+  const { order, loading, error } = useTrackedOrder(orderId);
 
-  // ── Dynamic status state ─────────────────────────────────────────────────
-  const [status, setStatus] = useState(
-    order.status || 'Order Confirmed'
-  );
+  const packages = order.packages;
+  const firstPackage = packages[0] || {};
+  // Main timeline follows the first package. Multi-vendor orders list each
+  // vendor's own status in the summary card.
+  const status = normalizeStatus(firstPackage.status);
+  const vendorName = order.vendorName || firstPackage.vendorName || 'the vendor';
+  const vendorLocation = order.vendorLocation || firstPackage.vendorLocation || '';
+  const deliveryAddress =
+    typeof order.deliveryAddress === 'string'
+      ? order.deliveryAddress
+      : order.deliveryAddress?.address || order.address || '';
+  const timestamps = order.timestamps || {};
+  const total = order.total ?? order.totalPaid ?? 0;
+  const canCancel = status === 'pending';
 
-  // TEMPORARY DEV SIMULATION - REMOVE WHEN BACKEND IS CONNECTED
-  // Walks through STATUS_SEQUENCE automatically, one step every 4.5 seconds,
-  // starting from the step after the initial status (or from the beginning
-  // if the initial status is not in the sequence).
-  useEffect(() => {
-  let timers = [];
+  const orderLabel = useMemo(() => {
+    if (order.orderNumber != null) {
+      return `Order #${String(order.orderNumber).padStart(6, '0')}`;
+    }
+    const id = String(order.id || '');
+    return id ? `Order #${id.slice(-6).toUpperCase()}` : 'Your order';
+  }, [order.id, order.orderNumber]);
 
-  const startIndex = STATUS_SEQUENCE.indexOf(status);
+  const handleCancel = () => {
+    // TODO: call your cancel flow here (update order_packages.status to 'cancelled')
+  };
 
-  if (startIndex === -1 || startIndex >= STATUS_SEQUENCE.length - 1) return;
+  const handleSupport = () => {
+    // TODO: open support (Contact Support screen or WhatsApp link)
+  };
 
-  STATUS_SEQUENCE.slice(startIndex + 1).forEach((nextStatus, i) => {
-    timers.push(
-      setTimeout(() => setStatus(nextStatus), (i + 1) * 4500)
+  if (loading || error || !order.id) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={24} color={TEXT} />
+          </Pressable>
+        </View>
+        <View style={styles.centerState}>
+          {loading ? (
+            <ActivityIndicator color={BRAND} />
+          ) : (
+            <Text style={styles.centerText}>
+              We couldn't load this order. Go back and try again.
+            </Text>
+          )}
+        </View>
+      </SafeAreaView>
     );
-  });
-
-  return () => timers.forEach(clearTimeout);
-      }, [status]); // Run once on mount — intentional, simulation starts from initial status
-  // END TEMPORARY DEV SIMULATION
-
-  // ── Derived values that re-compute whenever status changes ───────────────
-  const statusMeta = getStatusMeta(status);
-  const deliveryText = getDeliveryText(order);
-  const summary = useMemo(() => getOrderSummary(order), [order]);
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
 
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.headerIcon}>
-          <Ionicons name="chevron-back" size={25} color={TEXT} />
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={24} color={TEXT} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Track Order</Text>
-          <Text style={styles.headerSubtitle}>{order.id || fallbackOrder.id}</Text>
+          <Text style={styles.headerTitle}>Track order</Text>
+          <Text style={styles.headerSub}>{orderLabel}</Text>
         </View>
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: statusMeta.bg, borderColor: statusMeta.border },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: statusMeta.tone }]}>
-            {statusMeta.label.toUpperCase()}
-          </Text>
-        </View>
+        <View style={styles.backBtn} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.content}
       >
-        <MapPreview driverName={order.driverName || 'Chinedu O.'} />
-        <EstimateCard deliveryText={deliveryText} />
-        <TrackingHistory status={status} />
-        <OrderSummary summary={summary} />
+        <StatusBanner status={status} vendorName={vendorName} />
+
+        <RouteCard
+          vendorName={vendorName}
+          vendorLocation={vendorLocation}
+          deliveryAddress={deliveryAddress}
+        />
+
+        {status === 'cancelled' ? (
+          <CancelledCard time={formatTime(timestamps.cancelled)} />
+        ) : (
+          <Timeline status={status} timestamps={timestamps} />
+        )}
+
+        <SummaryCard packages={packages} total={total} />
 
         <View style={styles.actions}>
-          <Pressable style={styles.supportBtn}>
+          <Pressable style={styles.primaryBtn} onPress={handleSupport}>
             <Ionicons name="headset-outline" size={19} color="#FFFFFF" />
-            <Text style={styles.supportText}>Contact Support</Text>
+            <Text style={styles.primaryBtnText}>Contact support</Text>
           </Pressable>
 
-          <Pressable style={styles.reportBtn}>
-            <Text style={styles.reportText}>Report Issue</Text>
-          </Pressable>
-
-          {status !== 'Completed' ? (
-            <Pressable style={styles.cancelBtn}>
-              <Text style={styles.cancelText}>Cancel Order</Text>
+          {canCancel ? (
+            <Pressable style={styles.ghostBtn} onPress={handleCancel}>
+              <Text style={styles.ghostBtnText}>Cancel order</Text>
             </Pressable>
           ) : null}
         </View>
@@ -521,416 +527,134 @@ const TrackOrderScreen = () => {
 
 export default TrackOrderScreen;
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Styles
+ * ──────────────────────────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: BG,
-    paddingTop: Platform.OS === 'android' ? 25 : 0,
-  },
+  safeArea: { flex: 1, backgroundColor: BG },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: BG,
-  },
-  headerIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 10,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: TEXT,
-  },
-  headerSubtitle: {
-    fontSize: 15,
-    fontWeight: '400',
-    color: TEXT,
-    marginTop: 4,
-  },
-  statusPill: {
-    minWidth: 92,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 18,
-    borderWidth: 1,
+    paddingVertical: 10,
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 46,
-  },
-  surfaceCard: {
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: TEXT },
+  headerSub: { fontSize: 13, color: TEXT_MUTED, marginTop: 2 },
+
+  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40, gap: 14 },
+
+  card: {
     backgroundColor: CARD,
-    borderRadius: 8,
+    borderRadius: 16,
+    padding: 18,
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: SHADOW,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-    elevation: 4,
+    borderColor: 'rgba(22, 20, 18, 0.06)',
   },
-  mapCard: {
-    height: 246,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#415654',
-    borderWidth: 8,
-    borderColor: CARD,
-    marginBottom: 24,
-    shadowColor: SHADOW,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-    elevation: 4,
-  },
-  mapSvg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mapShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  driverCard: {
-    position: 'absolute',
-    left: 18,
-    bottom: 16,
-    width: 156,
+
+  /* Banner */
+  banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: CARD,
-    borderRadius: 8,
-    padding: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 8,
+    gap: 14,
+    backgroundColor: BRAND_SOFT,
+    borderRadius: 16,
+    padding: 16,
   },
-  driverIcon: {
+  bannerIcon: {
     width: 44,
     height: 44,
-    borderRadius: 8,
-    backgroundColor: ORANGE_SOFT,
+    borderRadius: 22,
+    backgroundColor: BRAND,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  driverBody: {
-    flex: 1,
-  },
-  driverLabel: {
-    fontSize: 11,
-    color: TEXT_MUTED,
-    letterSpacing: 1,
-  },
-  driverName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: TEXT,
-    marginTop: 3,
-  },
-  estimateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    padding: 22,
-    marginBottom: 24,
-  },
-  estimateIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    backgroundColor: BLUE_SOFT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  estimateBody: {
-    flex: 1,
-  },
-  estimateLabel: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: BLUE,
-    letterSpacing: 1.4,
-  },
-  estimateText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: TEXT,
-    marginTop: 6,
-  },
-  historyCard: {
-    padding: 24,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: TEXT,
-    marginBottom: 28,
-  },
-  timeline: {
-    gap: 0,
-  },
-  timelineRow: {
-    flexDirection: 'row',
-    minHeight: 80,
-  },
-  timelineRail: {
-    width: 32,
-    alignItems: 'center',
-  },
-  timelineDot: {
+  bannerText: { flex: 1, fontSize: 17, fontWeight: '700', color: TEXT, lineHeight: 23 },
+
+  /* Route card */
+  routeRow: { flexDirection: 'row', gap: 14 },
+  routeRail: { width: 14, alignItems: 'center', paddingTop: 4 },
+  routeDot: { width: 12, height: 12, borderRadius: 6 },
+  routeDotHollow: { borderWidth: 2.5, borderColor: BRAND, backgroundColor: CARD },
+  routeConnector: { flex: 1, width: 2, backgroundColor: LINE, marginVertical: 4 },
+  routeBody: { flex: 1, paddingBottom: 18 },
+  routeLabel: { fontSize: 13, color: TEXT_MUTED },
+  routeTitle: { fontSize: 16, fontWeight: '700', color: TEXT, marginTop: 3 },
+  routeDetail: { fontSize: 14, color: TEXT_MUTED, marginTop: 3, lineHeight: 20 },
+  routeDetailStrong: { fontSize: 15, fontWeight: '600', color: TEXT, marginTop: 3, lineHeight: 21 },
+
+  /* Timeline */
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: TEXT, marginBottom: 18 },
+  sectionTitleInline: { fontSize: 17, fontWeight: '700', color: TEXT },
+  tlRow: { flexDirection: 'row', minHeight: 72 },
+  tlRail: { width: 30, alignItems: 'center' },
+  tlDotWrap: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  tlDot: {
     width: 22,
     height: 22,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
   },
-  timelineDotDone: {
-    backgroundColor: BLUE,
+  tlDotFilled: { backgroundColor: BRAND },
+  tlDotCurrent: { borderWidth: 4, borderColor: BRAND_RING, width: 26, height: 26, borderRadius: 13 },
+  tlDotCore: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF' },
+  tlDotPending: { backgroundColor: CARD, borderWidth: 2, borderColor: LINE },
+  pulseRing: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: BRAND_RING,
   },
-  timelineDotCurrent: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: ORANGE,
-    borderWidth: 5,
-    borderColor: 'rgba(255, 90, 0, 0.16)',
-    marginTop: -10,
-  },
-  timelineDotAlert: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#C0392B',
-    borderWidth: 5,
-    borderColor: 'rgba(192, 57, 43, 0.14)',
-    marginTop: -8,
-  },
-  timelineDotPending: {
-    backgroundColor: CARD,
-    borderWidth: 2,
-    borderColor: '#BDBDBD',
-  },
-  timelineLine: {
-    flex: 1,
-    width: 1.5,
-    minHeight: 44,
-  },
-  timelineLineActive: {
-    backgroundColor: PRIMARY,
-  },
-  timelineLineMuted: {
-    backgroundColor: '#E0E0E0',
-  },
-  timelineBody: {
-    flex: 1,
-    paddingLeft: 18,
-    paddingBottom: 24,
-  },
-  timelineTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: TEXT,
-    marginBottom: 5,
-  },
-  timelineTitleCurrent: {
-    color: '#D92800',
-  },
-  timelineTitlePending: {
-    color: TEXT_LIGHT,
-  },
-  timelineDetail: {
-    fontSize: 15,
-    color: TEXT_MUTED,
-    lineHeight: 21,
-  },
-  timelineDetailPending: {
-    color: TEXT_LIGHT,
-  },
-  timelineMeta: {
-    fontSize: 13,
-    color: TEXT_MUTED,
-    marginTop: 3,
-  },
-  summaryCard: {
-    padding: 20,
-    marginBottom: 26,
-  },
+  tlLine: { flex: 1, width: 2, backgroundColor: LINE, marginVertical: 4 },
+  tlLineDone: { backgroundColor: BRAND },
+  tlBody: { flex: 1, paddingLeft: 12, paddingBottom: 20 },
+  tlTitle: { fontSize: 15, fontWeight: '700', color: TEXT },
+  tlDetail: { fontSize: 14, color: TEXT_MUTED, marginTop: 3, lineHeight: 20 },
+  tlTime: { fontSize: 13, color: TEXT_MUTED, paddingTop: 2 },
+
+  cancelledBody: { fontSize: 15, color: TEXT_MUTED, lineHeight: 22 },
+
+  /* Summary */
   summaryHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  summaryHeaderText: {
-    flex: 1,
-  },
-  summaryTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: TEXT,
-    marginBottom: 5,
-  },
-  summaryMeta: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: BLUE,
-  },
-  summaryTotal: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: TEXT,
-  },
-  thumbsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 26,
-    marginBottom: 22,
-  },
-  productThumb: {
-    width: 66,
-    height: 66,
-    borderRadius: 8,
-    backgroundColor: '#F0F0F0',
-  },
-  thumbPlaceholder: {
-    width: 66,
-    height: 66,
-    borderRadius: 8,
-    backgroundColor: '#F2F2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thumbOverflow: {
-    width: 66,
-    height: 66,
-    borderRadius: 8,
-    backgroundColor: '#F2F2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thumbOverflowText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: TEXT,
-  },
-  detailsList: {
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-    paddingTop: 16,
-    marginBottom: 8,
-    gap: 14,
-  },
-  detailEmptyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailEmptyText: {
-    fontSize: 14,
-    color: TEXT_MUTED,
-  },
-  vendorDetail: {
-    gap: 8,
-  },
-  vendorDetailName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: TEXT,
-  },
-  detailItemRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    marginBottom: 14,
   },
-  detailItemName: {
-    flex: 1,
-    fontSize: 13,
-    color: TEXT_MUTED,
-  },
-  detailItemQty: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: TEXT,
-  },
-  viewDetailsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  viewDetailsText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: BLUE,
-  },
-  actions: {
-    gap: 12,
-  },
-  supportBtn: {
-    minHeight: 62,
-    borderRadius: 8,
-    backgroundColor: ORANGE,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    shadowColor: ORANGE,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    elevation: 6,
-  },
-  supportText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  reportBtn: {
-    minHeight: 58,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(181, 59, 24, 0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  reportText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: TEXT,
-  },
-  cancelBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  summaryTotal: { fontSize: 17, fontWeight: '700', color: TEXT },
+  pkg: { gap: 10, marginTop: 4, marginBottom: 6 },
+  pkgVendor: { fontSize: 14, fontWeight: '700', color: BRAND },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  itemQty: { width: 28, fontSize: 14, fontWeight: '600', color: TEXT_MUTED },
+  itemName: { flex: 1, fontSize: 15, color: TEXT },
+  itemPrice: { fontSize: 14, color: TEXT_MUTED },
+
+  /* Actions */
+  actions: { gap: 10, marginTop: 6 },
+  primaryBtn: {
     minHeight: 54,
+    borderRadius: 14,
+    backgroundColor: BRAND,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  cancelText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#3F1710',
+  primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  ghostBtn: {
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  ghostBtnText: { fontSize: 15, fontWeight: '600', color: DANGER },
+
+  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  centerText: { fontSize: 15, color: TEXT_MUTED, textAlign: 'center' },
 });

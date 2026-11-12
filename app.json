@@ -1,7 +1,8 @@
+
 {
   "expo": {
-    "name": "unilag-marketplace",
-    "slug": "unilag-marketplace",
+    "name": "FoodArena",
+    "slug": "FoodArena",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,8 +11,9 @@
       "expo-font",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-notifications"
-    ],
+      "expo-notifications",
+      ["expo-location", {"locationWhenInUsePermission": "Allow FoodArena to use your location."}
+    ]],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dotunadeusi.unilagmarketplace",
@@ -20,6 +22,7 @@
       }
     },
     "android": {
+      "package": "com.dotunadeusi.unilagmarketplace",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

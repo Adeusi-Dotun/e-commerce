@@ -1,143 +1,152 @@
-import React, { createContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { AuthContext } from './AuthContext';
 
 export const AddressContext = createContext();
 
+// DB row -> the object the screens use.
+// locationName / address / label are kept as aliases so screens we haven't
+// updated yet (AddressManagement, Checkout) keep rendering. Remove them once
+// those screens read `addressLine` directly.
+const fromRow = (row) => ({
+  id: row.id,
+  addressLine: row.address_line,
+  landmark: row.landmark || '',
+  lat: row.lat,
+  lng: row.lng,
+  isDefault: row.is_default,
+  locationName: row.address_line,
+  address: row.address_line,
+  label: row.address_line,
+});
+
 export const AddressProvider = ({ children }) => {
+  const { user } = useContext(AuthContext);
   const [addresses, setAddresses] = useState([]);
-  const [selectedAddress, setSelectedAddress] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // The selected address IS the default one. No second piece of state to drift.
+  const selectedAddress = addresses.find((a) => a.isDefault) || null;
+
+  const loadAddresses = useCallback(async () => {
+    if (!user?.id) {
+      setAddresses([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('user_addresses')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error) setAddresses((data || []).map(fromRow));
+    setLoading(false);
+  }, [user?.id]);
 
   useEffect(() => {
     loadAddresses();
-  }, []);
+  }, [loadAddresses]);
 
-  const loadAddresses = async () => {
-    try {
-      const stored = await AsyncStorage.getItem('user_addresses');
-      const selected = await AsyncStorage.getItem('selected_address');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setAddresses(parsed);
-      }
-      if (selected) {
-        setSelectedAddress(JSON.parse(selected));
-      }
-    } catch (e) {
-      console.error('Error loading addresses:', e);
-    } finally {
-      setLoading(false);
+  // Only one default per user (the unique index enforces it), so clear first.
+  const clearDefaults = () =>
+    supabase
+      .from('user_addresses')
+      .update({ is_default: false })
+      .eq('user_id', user.id)
+      .eq('is_default', true);
+
+  const addAddress = async ({ addressLine, landmark, lat, lng, isDefault }) => {
+    if (!user?.id) return { error: new Error('Not signed in') };
+
+    const makeDefault = Boolean(isDefault) || addresses.length === 0;
+
+    if (makeDefault) {
+      const { error: clearError } = await clearDefaults();
+      if (clearError) return { error: clearError };
     }
-  };
 
-  const addAddress = async (newAddress) => {
-    try {
-      // If setting as default or if it's the first address, clear other defaults
-      const isFirst = addresses.length === 0;
-      const shouldBeDefault = newAddress.isDefault || isFirst;
-      
-      const preparedAddress = {
-        ...newAddress,
-        isDefault: shouldBeDefault,
-      };
+    const { data, error } = await supabase
+      .from('user_addresses')
+      .insert({
+        user_id: user.id,
+        address_line: addressLine,
+        landmark: landmark || null,
+        lat: lat ?? null,
+        lng: lng ?? null,
+        is_default: makeDefault,
+      })
+      .select()
+      .single();
 
-      let updated = [];
-      if (shouldBeDefault) {
-        updated = addresses.map(addr => ({ ...addr, isDefault: false }));
-      } else {
-        updated = [...addresses];
-      }
-      
-      updated = [...updated, preparedAddress];
-      setAddresses(updated);
-      await AsyncStorage.setItem('user_addresses', JSON.stringify(updated));
-      
-      if (shouldBeDefault) {
-        await selectAddress(preparedAddress);
-      }
-    } catch (e) {
-      console.error('Error adding address:', e);
-    }
-  };
+    if (error) return { error };
 
-  const deleteAddress = async (id) => {
-    try {
-      const addressToDelete = addresses.find(addr => addr.id === id);
-      const updated = addresses.filter(addr => addr.id !== id);
-      
-      // If we deleted the default address, make the first remaining address the default
-      let finalUpdated = [...updated];
-      if (addressToDelete && addressToDelete.isDefault && updated.length > 0) {
-        finalUpdated = updated.map((addr, idx) => ({
-          ...addr,
-          isDefault: idx === 0
-        }));
-      }
-
-      setAddresses(finalUpdated);
-      await AsyncStorage.setItem('user_addresses', JSON.stringify(finalUpdated));
-
-      // Update selectedAddress if the deleted address was selected
-      if (selectedAddress && selectedAddress.id === id) {
-        const newDefault = finalUpdated.find(addr => addr.isDefault);
-        if (newDefault) {
-          await selectAddress(newDefault);
-        } else if (finalUpdated.length > 0) {
-          await selectAddress(finalUpdated[0]);
-        } else {
-          setSelectedAddress(null);
-          await AsyncStorage.removeItem('selected_address');
-        }
-      } else if (addressToDelete && addressToDelete.isDefault && finalUpdated.length > 0) {
-        // If the deleted address was default but not currently selected, we still want to keep selectedAddress updated if needed
-        const newDefault = finalUpdated.find(addr => addr.isDefault);
-        if (newDefault) {
-          await selectAddress(newDefault);
-        }
-      }
-    } catch (e) {
-      console.error('Error deleting address:', e);
-    }
-  };
-
-  const selectAddress = async (address) => {
-    try {
-      setSelectedAddress(address);
-      await AsyncStorage.setItem('selected_address', JSON.stringify(address));
-    } catch (e) {
-      console.error('Error selecting address:', e);
-    }
+    const created = fromRow(data);
+    setAddresses((prev) => [
+      created,
+      ...prev.map((a) => (makeDefault ? { ...a, isDefault: false } : a)),
+    ]);
+    return { error: null };
   };
 
   const setDefaultAddress = async (id) => {
-    try {
-      const updated = addresses.map(addr => ({
-        ...addr,
-        isDefault: addr.id === id
-      }));
-      setAddresses(updated);
-      await AsyncStorage.setItem('user_addresses', JSON.stringify(updated));
-      
-      const newDefault = updated.find(addr => addr.id === id);
-      if (newDefault) {
-        await selectAddress(newDefault);
-      }
-    } catch (e) {
-      console.error('Error setting default address:', e);
+    if (!user?.id) return { error: new Error('Not signed in') };
+
+    const { error: clearError } = await clearDefaults();
+    if (clearError) return { error: clearError };
+
+    const { error } = await supabase
+      .from('user_addresses')
+      .update({ is_default: true })
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) return { error };
+
+    setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })));
+    return { error: null };
+  };
+
+  // Kept so existing callers still work: selecting an address makes it the default.
+  const selectAddress = (address) => setDefaultAddress(address?.id);
+
+  const deleteAddress = async (id) => {
+    if (!user?.id) return { error: new Error('Not signed in') };
+
+    const target = addresses.find((a) => a.id === id);
+    const { error } = await supabase
+      .from('user_addresses')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) return { error };
+
+    const remaining = addresses.filter((a) => a.id !== id);
+    setAddresses(remaining);
+
+    // Deleted the default? Promote the most recent remaining address.
+    if (target?.isDefault && remaining.length > 0) {
+      await setDefaultAddress(remaining[0].id);
     }
+    return { error: null };
   };
 
   return (
-    <AddressContext.Provider value={{
-      addresses,
-      selectedAddress,
-      loading,
-      addAddress,
-      deleteAddress,
-      selectAddress,
-      setDefaultAddress,
-      loadAddresses
-    }}>
+    <AddressContext.Provider
+      value={{
+        addresses,
+        selectedAddress,
+        loading,
+        addAddress,
+        deleteAddress,
+        selectAddress,
+        setDefaultAddress,
+        loadAddresses,
+      }}
+    >
       {children}
     </AddressContext.Provider>
   );

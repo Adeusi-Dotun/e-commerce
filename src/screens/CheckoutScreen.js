@@ -1,15 +1,33 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useContext , useState } from 'react';
-import {View,ScrollView,StyleSheet,Pressable,Image,TextInput,SafeAreaView,Platform,Alert} from 'react-native';
+import { useContext, useState } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  Image,
+  TextInput,
+  SafeAreaView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { CartContext } from '../context/CartContext';
 import { AddressContext } from '../context/AddressContext';
-import {formatNaira , getVendorInitials , getVendorAccent , computeOrderFees , validateCoupon ,} from '../utils/orders';
+import {
+  formatNaira,
+  getVendorInitials,
+  getVendorAccent,
+  computeOrderFees,
+  validateCoupon,
+} from '../utils/orders';
 import { supabase } from '../lib/supabase';
 import { AuthContext } from '../context/AuthContext';
 import * as webBrowser from 'expo-web-browser';
+import { useSubmitLock } from '../hooks/useSubmitLock';
 
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
@@ -84,6 +102,10 @@ const CheckoutScreen = () => {
   const { selectedAddress } = useContext(AddressContext);
   const { user } = useContext(AuthContext);
 
+  // paying = true while the payment flow is running
+  // run    = wraps a function so it can only run once at a time
+  const { loading: paying, run } = useSubmitLock();
+
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
@@ -111,26 +133,23 @@ const CheckoutScreen = () => {
   const itemCountLabel =
     cartCount === 1 ? '1 item' : `${cartCount} items`;
 
-
-    const handlePayment = async () => {
-
+  const handlePayment = () =>
+    run(async () => {
       if (!selectedAddress) {
         Alert.alert('Please select or add a delivery address');
         return;
       }
 
       try {
-        const { data: initData, error: initError } = await supabase.functions.invoke(
-          'initialize-payment',
-          {
+        const { data: initData, error: initError } =
+          await supabase.functions.invoke('initialize-payment', {
             body: {
               cart,
               deliveryAddress: selectedAddress,
               deliveryNotes,
               couponCode: appliedCoupon?.code,
             },
-          }
-        );
+          });
 
         if (initError) {
           const message = await parseFunctionError(initError);
@@ -138,7 +157,10 @@ const CheckoutScreen = () => {
           return;
         }
         if (!initData?.status) {
-          Alert.alert('Could not start payment', initData?.error ?? 'Please try again.');
+          Alert.alert(
+            'Could not start payment',
+            initData?.error ?? 'Please try again.'
+          );
           return;
         }
 
@@ -148,52 +170,42 @@ const CheckoutScreen = () => {
           await webBrowser.openBrowserAsync(paystackData.authorization_url);
         }
 
-        const { data: verifyData, error: verifyError } = await supabase.functions.invoke(
-          'verify-payment',
-          { body: { reference } }
-        );
+        const { data: verifyData, error: verifyError } =
+          await supabase.functions.invoke('verify-payment', {
+            body: { reference },
+          });
 
         if (verifyError) {
-          console.log('VERIFY PAYMET ERROR:', verifyError.message);
-          console.log("ERROR NAME:", verifyError.name);
-
           const message = await parseFunctionError(verifyError);
 
-            console.log('PARSED BACKEND ERROR:', message);
-
           Alert.alert('Payment failed', message);
-
-          if (verifyError.context) {
-            try {
-              const responseBody = await verifyError.context.clone().text();
-
-              console.log("BACKEND ERROR BODY:", responseBody);
-            } catch (e) {
-              console.log("Could not read error body:", e);
-            }
-          }
-
-          throw verifyError; // Rethrow the error to be caught by the outer catch block
           return;
         }
 
         if (verifyData?.verified) {
           navigation.replace('PlacedOrder', { orderId: verifyData.orderId });
         } else {
-          Alert.alert('Payment failed', 'Please try again or use a different payment method.');
+          Alert.alert(
+            'Payment failed',
+            'Please try again or use a different payment method.'
+          );
         }
       } catch (error) {
         console.error('Payment error', error);
         Alert.alert('Something went wrong', 'Please try again.');
       }
-    };
+    });
 
-return (
+  return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
 
       <View style={styles.header}>
-        <Pressable style={styles.iconBtn} onPress={() => navigation.goBack()}>
+        <Pressable
+          style={styles.iconBtn}
+          onPress={() => navigation.goBack()}
+          disabled={paying}
+        >
           <Ionicons name="chevron-back" size={22} color={TEXT} />
         </Pressable>
         <View style={styles.headerCenter}>
@@ -219,24 +231,25 @@ return (
             </View>
             {selectedAddress ? (
               <View style={styles.addressBody}>
-                <Text style={styles.addressLabel}>Deliver to ({selectedAddress.label || 'Campus'})</Text>
                 <Text style={styles.addressTitle}>
-                  {selectedAddress.locationName}{selectedAddress.details ? `, ${selectedAddress.details}` : ''}
+                  {selectedAddress.locationName}
+                  {selectedAddress.details ? `, ${selectedAddress.details}` : ''}
                 </Text>
                 {selectedAddress.landmark ? (
                   <Text style={styles.addressMeta}>
-                    {selectedAddress.landmark} · UNILAG Akoka
+                    {selectedAddress.landmark}
                   </Text>
-                ) : (
-                  <Text style={styles.addressMeta}>
-                    University of Lagos · Akoka
-                  </Text>
-                )}
+                ) : null}
               </View>
             ) : (
               <View style={styles.addressBody}>
                 <Text style={styles.addressLabel}>Deliver to</Text>
-                <Text style={[styles.addressTitle, { color: '#B53B18', fontWeight: '600' }]}>
+                <Text
+                  style={[
+                    styles.addressTitle,
+                    { color: '#B53B18', fontWeight: '600' },
+                  ]}
+                >
                   No delivery address selected
                 </Text>
                 <Text style={styles.addressMeta}>
@@ -247,6 +260,7 @@ return (
             <Pressable
               style={styles.changeBtn}
               onPress={() => navigation.navigate('AddressManagement')}
+              disabled={paying}
             >
               <Text style={styles.changeBtnText}>
                 {selectedAddress ? 'Change' : 'Add'}
@@ -267,6 +281,7 @@ return (
               value={deliveryNotes}
               onChangeText={setDeliveryNotes}
               multiline
+              editable={!paying}
             />
           </View>
         </SurfaceCard>
@@ -351,6 +366,7 @@ return (
                   index < PAYMENT_METHODS.length - 1 && styles.paymentRowBorder,
                 ]}
                 onPress={() => setSelectedPayment(method.id)}
+                disabled={paying}
               >
                 <View
                   style={[
@@ -391,6 +407,7 @@ return (
           <Pressable
             style={styles.addPaymentRow}
             onPress={() => navigation.navigate('AddCard')}
+            disabled={paying}
           >
             <Ionicons name="add-circle-outline" size={22} color={PRIMARY} />
             <Text style={styles.addPaymentText}>Add new payment method</Text>
@@ -410,9 +427,14 @@ return (
                 value={couponCode}
                 onChangeText={setCouponCode}
                 autoCapitalize="characters"
+                editable={!paying}
               />
             </View>
-            <Pressable style={styles.applyBtn} onPress={handleApplyCoupon}>
+            <Pressable
+              style={styles.applyBtn}
+              onPress={handleApplyCoupon}
+              disabled={paying}
+            >
               <Text style={styles.applyBtnText}>Apply</Text>
             </Pressable>
           </View>
@@ -485,13 +507,22 @@ return (
           <Pressable
             style={({ pressed }) => [
               styles.placeOrderBtn,
-              pressed && styles.placeOrderBtnPressed,
+              pressed && !paying && styles.placeOrderBtnPressed,
+              paying && { opacity: 0.7 },
             ]}
             onPress={handlePayment}
+            disabled={paying}
+            accessibilityState={{ busy: paying, disabled: paying }}
           >
-            <Text style={styles.placeOrderText}>Place Order</Text>
+            <Text style={styles.placeOrderText}>
+              {paying ? 'Processing' : 'Place Order'}
+            </Text>
             <View style={styles.placeOrderArrow}>
-              <Ionicons name="arrow-forward" size={18} color="#FFF" />
+              {paying ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="arrow-forward" size={18} color="#FFF" />
+              )}
             </View>
           </Pressable>
         </View>
@@ -499,6 +530,8 @@ return (
     </SafeAreaView>
   );
 };
+
+
 
 export default CheckoutScreen;
 

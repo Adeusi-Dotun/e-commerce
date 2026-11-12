@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeScreen from '../screens/HomeScreen';
-import CategoriesScreen from '../screens/CategoriesScreen';
+import SearchScreen from '../screens/SearchScreen';
 import AccountScreen from "../screens/AccountScreen";
 import { Ionicons } from '@expo/vector-icons';
 import { useContext } from 'react';
@@ -63,6 +63,7 @@ export default function TabNavigator(){
         <Tab.Navigator>
             <Tab.Screen name= 'Home' component={HomeScreen} 
             options={({ navigation }) => ({
+                headerShown: false,
                 tabBarLabel:'Home',
                 tabBarLabelStyle: {
                     fontSize: 13,
@@ -79,8 +80,9 @@ export default function TabNavigator(){
                 },
                 headerRight: () => <CartHeaderButton navigation={navigation} />,
             })} />
-            <Tab.Screen name= 'Categories' component={CategoriesScreen} 
+            <Tab.Screen name= 'Search' component={SearchScreen} 
             options={{
+                headerShown: false,
                 tabBarLabel:'Search',
                 tabBarLabelStyle: {
                     fontSize: 13,

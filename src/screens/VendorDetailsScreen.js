@@ -6,6 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useContext, useEffect } from 'react';
 import { CartContext } from '../context/CartContext';
 import {supabase} from '../lib/supabase';
+import { formatNaira } from '../utils/orders';
 
 const VendorDetailsScreen = () => {
 
@@ -127,7 +128,6 @@ const VendorDetailsScreen = () => {
         {/* Menu Items List */}
         <View style={styles.menuItemsContainer}>
           {menuItems.map((item) => {
-             console.log(item.name, item.images);
             const cartItem = cartItems.find(
               (i) => i.id === item.id && i.vendorId === vendor?.id
             );
@@ -138,7 +138,7 @@ const VendorDetailsScreen = () => {
               <View style={styles.menuItemDetails}>
                 <Text style={styles.menuItemTitle}>{item.name}</Text>
                 <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
-                <Text style={styles.menuItemPrice}>₦{item.price}</Text>
+                <Text style={styles.menuItemPrice}>{formatNaira(item.price)}</Text>
               </View>
               <View style={styles.qtyContainer}>
                 <Pressable
@@ -179,7 +179,7 @@ const VendorDetailsScreen = () => {
           >
            <View>
              <Text style={styles.cartItemCount}>{cartCount} Items</Text>
-             <Text style={styles.cartTotalPrice}>#{cartTotal}</Text>
+             <Text style={styles.cartTotalPrice}>{formatNaira(cartTotal)}</Text>
            </View>
            <View style={styles.viewCartAction}>
              <Text style={styles.viewCartText}>View Cart</Text>

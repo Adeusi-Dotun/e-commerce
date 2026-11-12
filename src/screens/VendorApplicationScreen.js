@@ -19,14 +19,10 @@ import { supabase } from '../lib/supabase';
 const PRIMARY = '#FF6B00';
 
 const categoryTags = [
-  { label: 'Food & Drinks', icon: 'fast-food-outline' },
-  { label: 'Clothing', icon: 'shirt-outline' },
-  { label: 'Fashion & Accessories', icon: 'bag-outline' },
-  { label: 'Pharmacy', icon: 'medkit-outline' },
-  { label: 'Electronics', icon: 'phone-portrait-outline' },
-  { label: 'Beauty & Skincare', icon: 'sparkles-outline' },
-  { label: 'Stationery', icon: 'book-outline' },
-  { label: 'Laundry & Cleaning', icon: 'water-outline' },
+  { label: 'Food', icon: 'fast-food-outline' },
+  { label: 'Fashion', icon: 'bag-outline' },
+  { label: 'Beauty', icon: 'sparkles-outline' },
+
 ];
 
 const progressSteps = ['Personal', 'Business', 'Verify'];
@@ -77,7 +73,7 @@ const VendorApplicationScreen = () => {
           campus_location: campusLocation.trim(),
           business_description: businessDescription.trim(),
           cac_number: cacNumber.trim() || null,
-          tags: selectedTags,
+          business_category: selectedTags,
           status: 'pending',
         });
 

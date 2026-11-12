@@ -68,7 +68,7 @@ export function NotificationProvider({ children }) {
   return (
     <NotificationContext.Provider
       value={{
-        notifications,
+        notifications, 
         currentBanner,
         dismissNotification,
       }}

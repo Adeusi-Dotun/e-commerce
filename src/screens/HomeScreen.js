@@ -1,429 +1,178 @@
 import { AppText as Text } from '../components/CustomText';
-import { StyleSheet, View, TextInput, Pressable, ScrollView, Image, Dimensions } from 'react-native'
-const { width } = Dimensions.get('window');
-import { useNavigation } from '@react-navigation/native';
+import { Dimensions, Image, Pressable, ScrollView, StatusBar, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { AddressContext } from '../context/AddressContext';
 
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = Math.min(width * 0.57, 228);
+const fallbackImage = 'https://images.unsplash.com/photo-1564834724105-918b73d1b9e0?w=800&q=80';
 
-const HomeScreen = () => {
+const mockVendors = [
+  { id: 'mock-glow-lab', name: 'Glow Lab Beauty', business_category: 'Beauty', location: 'Jaja Hall', description: 'Beauty essentials & self care', rating: '4.9', delivery: '20–30 min', price: 'From ₦2,500', badge: 'Save ₦2,000', menu: [{ image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=700&q=85' }] },
+  { id: 'mock-solecraft', name: 'SoleCraft Kicks', business_category: 'Fashion', location: 'New Hall', description: 'Sneakers and campus style', rating: '4.7', delivery: '15–25 min', price: 'From ₦8,000', badge: 'Campus pick', menu: [{ image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=700&q=85' }] },
+  { id: 'mock-chopspot', name: 'The Chop Spot', business_category: 'Food', location: 'Moremi Hall', description: 'Fast, filling campus meals', rating: '4.8', delivery: '20–30 min', price: 'From ₦1,800', badge: 'Free pickup', menu: [{ image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=700&q=85' }] },
+];
 
+const categories = [
+  { label: 'All', icon: 'sparkles', color: '#6D3CC7' }, { label: 'Food', icon: 'fast-food', color: '#F36A21' },
+  { label: 'Fashion', icon: 'bag-handle', color: '#128775' }, { label: 'Beauty', icon: 'flower-outline', color: '#D42D7B' },
+];
+
+export default function HomeScreen() {
   const navigation = useNavigation();
-  const [search, setSearch] = useState('');
+  const { selectedAddress } = useContext(AddressContext);
+  const [vendors, setVendors] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
-  const [vendors, setVendors] = useState([]) ;
-
-  useEffect(() => {
-    fetchVendors();
-  },[]);
-
-
+  
+useEffect(() => {
   const fetchVendors = async () => {
-    const {data, error} = await supabase
-      .from("vendors")
-      .select("*")
-      .eq("is_active", true);
+    const { data, error } = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('is_active', true);
 
-       console.log("DATA:", data);
-      console.log("ERROR:", error);
-      
-      if (error) {
-        console.log(error);
-        return;
-      }
-      
-      setVendors(data);
+    if (error) {
+      console.log('Could not load vendors:', error.message);
+      return;
+    }
+
+    const vendorList = data || [];
+
+    // Fetch products belonging to these vendors.
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('vendor_id, images, created_at')
+      .in(
+        'vendor_id',
+        vendorList.map(vendor => vendor.id)
+      )
+      .eq('is_available', true)
+      .order('created_at', { ascending: true });
+
+    if (productsError) {
+      console.log('Could not load vendor products:', productsError.message);
+      setVendors(vendorList);
+      return;
+    }
+
+    // Attach the first product image to each vendor.
+    const vendorsWithImages = vendorList.map(vendor => {
+      const firstProduct = products?.find(
+        product => product.vendor_id === vendor.id &&
+          Array.isArray(product.images) &&
+          product.images.length > 0
+      );
+
+      return {
+        ...vendor,
+        image: firstProduct?.images?.[0] || null,
+      };
+    });
+
+    setVendors(vendorsWithImages);
+  };
+
+  fetchVendors();
+}, []);
+
+  
+const displayVendors = useMemo(() => {
+  const liveNames = new Set(
+    vendors.map(vendor => vendor.name?.toLowerCase())
+  );
+
+  const allVendors = [
+    ...vendors,
+    ...mockVendors.filter(
+      vendor => !liveNames.has(vendor.name.toLowerCase())
+    ),
+  ];
+
+  // Show every vendor when "All" is selected.
+  if (selectedCategory === 'All') {
+    return allVendors;
   }
 
+  // Otherwise, show only vendors in the selected category.
+  return allVendors.filter(
+    vendor =>
+      vendor.business_category?.toLowerCase() ===
+      selectedCategory.toLowerCase()
+  );
+}, [vendors, selectedCategory]);
 
-  return (
-    <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
+  const destination = selectedAddress?.label || selectedAddress?.name || selectedAddress?.address || 'Select address';
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Welcome  <Text style={{ fontSize: 18 }}>👏</Text></Text>
-        <Text style={styles.title}>What do you need today?</Text>
-
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color="#888" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search Vendors, item or services"
-            placeholderTextColor="#aaa"
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <Ionicons
-              name="close-circle"
-              size={18}
-              color="#aaa"
-              onPress={() => setSearch('')}
-              style={{ marginRight: 10 }}
-            />
-          )}
+  const vendorCard = (vendor, isDeal = false) => (
+    <Pressable key={String(vendor.id)} style={[styles.vendorCard, isDeal && styles.dealCard]} onPress={() => navigation.navigate('VendorDetails', { vendor })}>
+      <View style={styles.imageWrap}>
+        <Image source={{ uri: vendor.menu?.[0]?.image || vendor.image || fallbackImage }} style={styles.cardImage} />
+        <View style={[styles.cardBadge, isDeal && styles.dealBadge]}><Text style={[styles.badgeText, isDeal && styles.dealBadgeText]}>{isDeal ? vendor.badge || '25% OFF' : `★ ${vendor.rating || '4.8'}`}</Text></View>
+        <Pressable style={styles.heartButton} hitSlop={8} onPress={event => event.stopPropagation()}><Ionicons name="heart-outline" size={15} color="#3B2A20" /></Pressable>
+        {!isDeal && <View style={styles.deliveryPill}><Ionicons name="bicycle-outline" size={10} color="#FFF" /><Text style={styles.deliveryText}>{vendor.delivery || '20–30 min'}</Text></View>}
+      </View>
+      <View style={styles.cardCopy}>
+        <Text numberOfLines={1} style={styles.cardTitle}>{vendor.name}</Text>
+        <Text numberOfLines={1} style={styles.cardSubtitle}>{vendor.description || vendor.tags?.join(' · ') || 'Campus favourite'}</Text>
+        <View style={styles.cardFooter}>
+          <Text style={styles.cardPrice}>{vendor.price || 'From ₦17,0 00'}</Text>
+          {isDeal ? <View style={styles.addButton}><Ionicons name="add" size={15} color="#FFF" /></View> : <Text style={styles.smallRating}>★ {vendor.rating || '4.8'}</Text>}
         </View>
       </View>
-        <View style={styles.freeDelivery}>
-          <Text style={{fontSize:25, fontWeight:'500'}}>Free delivery!</Text>
-          <Text style={{fontSize:14, fontWeight:'300'}}>On your first order today</Text>
-          <Pressable
-            onPress={()=>{}}
-            style={styles.orderBtn}
-            >
-              <Text style={{fontWeight:'600', color:'white'}}>Order Now</Text>
+    </Pressable>
+  );
+
+  return <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <StatusBar barStyle="light-content" backgroundColor="#D94A06" />
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.hero}>
+        <View style={styles.topRow}>
+          <Pressable style={styles.locationButton} onPress={() => navigation.navigate('AddressManagement')}>
+            <View style={styles.locationIcon}><Ionicons name="location" size={16} color="#D94A06" /></View>
+            <View><Text style={styles.deliverTo}>DELIVER TO</Text><View style={styles.destinationRow}><Text numberOfLines={1} style={styles.destination}>{destination}</Text><Ionicons name="chevron-down" size={14} color="#FFF" /></View></View>
           </Pressable>
+          <Pressable style={styles.bellButton} accessibilityLabel="Notifications"><Ionicons name="notifications-outline" size={22} color="#FFF" /><View style={styles.notificationDot} /></Pressable>
         </View>
-        <Pressable
-          style={styles.vendorBanner}
-          onPress={() => navigation.navigate('VendorGate')}
-        >
-          <View style={styles.vendorBannerTexts}>
-            <Text style={styles.vendorBannerTitle}>Sell on UniMart</Text>
-            <Text style={styles.vendorBannerSubtitle}>Apply to become a vendor today</Text>
-          </View>
-          <View style={styles.vendorBannerIcon}>
-            <Ionicons name="storefront-outline" size={28} color="#FF6B00" />
-          </View>
-        </Pressable>
-        <View style={styles.category}>
-          <View style={styles.categoryTop}>
-            <Text style={{fontSize:16, fontWeight:'900'}}>Categories</Text>
-            <Pressable
-              onPress={()=>{}}
-              >
-            <Text style={{fontSize:16, fontWeight:'500'}}>See all</Text>
-            </Pressable>
-          </View>
-          <View style={styles.categoryBottom}>
-            <View style={styles.categoryCard}>
-              <View style={styles.Categories}>
-                <Ionicons name='fast-food-outline' size={30}  />
-              </View>
-              <Text style={{fontWeight:'600' }}> Food</Text>
-            </View>
-            <View style={styles.categoryCard}>
-              <View style={styles.Categories}>
-                <Ionicons name='shirt-outline' size={30}/>
-              </View>
-              <Text style={{fontWeight:'600' }}>Clothing</Text>
-            </View>
-            <View style={styles.categoryCard}>
-              <View style={styles.Categories}>
-                <Ionicons name="bag-outline" size={28} />
-              </View>
-              <Text style={{fontWeight:'600'}}>Fashion</Text>
-            </View>
-            <View style={styles.categoryCard}>
-              <View style={styles.Categories}>
-                <Ionicons name="medkit-outline" size={28} />
-              </View>
-              <Text style={{fontWeight:'600'}}>Pharmacy</Text>
-            </View>
-          </View>
-        </View>
+      </View>
 
-        <View style={styles.popularVendors}>
-          <View style={styles.popularVendorsTop}>
-            <Text style={{fontSize:20, fontWeight:'600'}}>Featured Vendors</Text>
-            <Ionicons name='arrow-forward-outline' size={30} color={'rgba(255, 107, 0, 0.8)'}  />
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.popularListing}>
-            {vendors.map((vendor) =>(
-              <Pressable 
-                key={vendor.id} 
-                style={styles.vendorCards}
-                onPress={() => navigation.navigate('VendorDetails', { vendor })}
-              >
-                <View style={styles.imageContainer}>
-                  {/* Safely get the first menu item's image, or fallback to default */}
-                  <Image source={{uri: vendor.menu?.[0]?.image || 'https://images.unsplash.com/photo-1564834724105-918b73d1b9e0?w=800&q=80'}} style={styles.vendorPic} />
-                  
-                  <View style={styles.topRatedBadge}>
-                    <Ionicons name="star" size={12} color="#A83B10" />
-                    <Text style={styles.topRatedText}>Top Rated</Text>
-                  </View>
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Category</Text><Pressable onPress={() => navigation.navigate('Categories')}><Text style={styles.seeAll}>See all <Ionicons name="chevron-forward" size={12} /></Text></Pressable></View>
+        <View style={styles.categoryRail}>{categories.map(category => {
+          const isActive = selectedCategory === category.label;
+          return <Pressable key={category.label} style={styles.categoryItem} onPress={() => setSelectedCategory(category.label)}>
+            <View style={[styles.categoryIcon, { backgroundColor: category.color }, isActive && styles.activeCategoryIcon]}><Ionicons name={category.icon} size={22} color="#FFF" /></View>
+            <Text style={[styles.categoryLabel, isActive && styles.activeCategoryLabel]}>{category.label}</Text>
+            <View style={[styles.categoryIndicator, isActive && styles.activeCategoryIndicator]} />
+          </Pressable>;
+        })}</View>
+      </View>
 
-                  <Pressable style={styles.heartBtn} onPress={(e) => { e.stopPropagation(); /* Handle heart press */ }}>
-                    <Ionicons name="heart-outline" size={18} color="#A83B10" />
-                  </Pressable>
-                </View>
+      <View style={[styles.section, styles.fullWidthSection]}>
+        <View style={[styles.sectionHeader, styles.insetHeader]}><View style={styles.titleWithIcon}><Text style={styles.lightning}>ϟ</Text><Text style={styles.sectionTitle}>Top Deals for the Day</Text><View style={styles.endsBadge}></View></View><Pressable><Text style={styles.seeAll}>See all <Ionicons name="chevron-forward" size={12} /></Text></Pressable></View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>{displayVendors.slice(0, 4).map(vendor => vendorCard(vendor, true))}</ScrollView>
+      </View>
 
-                <View style={styles.vendorDetails}>
-                  <Text style={styles.vendorName}>{vendor.name}</Text>
-                  <Text style={styles.vendorDescription}>{vendor.description}</Text>
-                  
-                  {vendor.tags && vendor.tags.length > 0 && (
-                     <Text style={styles.vendorTags}>{vendor.tags.join(' • ')}</Text>
-                  )}
+      <View style={[styles.section, styles.fullWidthSection, styles.popularSection]}>
+        <Text style={styles.popularTitle}>Popular near you</Text><Text style={styles.popularCaption}>Top-rated campus vendors delivering in under 30 mins</Text>
+        <View style={[styles.sectionHeader, styles.insetHeader, styles.trendingHeader]}><View style={styles.titleWithIcon}><Ionicons name="flame-outline" size={15} color="#D94A06" /><Text style={styles.trendingTitle}>Trending on Campus</Text></View><Pressable><Text style={styles.seeAll}>See all <Ionicons name="chevron-forward" size={12} /></Text></Pressable></View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>{displayVendors.map(vendor => vendorCard(vendor))}</ScrollView>
+      </View>
 
-                  <View style={styles.statsRow}>
-                    <Ionicons name="star-outline" size={15} color="#A83B10" />
-                    <Text style={styles.statsText}> <Text style={{fontWeight:'700', color: '#333'}}>4.8</Text> (500+)</Text>
-                  </View>
-
-                  <View style={styles.statsRow}>
-                    <Text><Ionicons name="location-outline" size={15} color="#555" /> {vendor.location}</Text>
-                  </View>
-
-                  <View style={styles.badgesRow}>
-                    <View style={styles.pillBudget}>
-                      <Text style={styles.pillBudgetText}>Budget Friendly</Text>
-                    </View>
-                  </View>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView> 
-            
-             
-           
-          
-
-        </View>
-      
-
+      <Pressable style={styles.sellBanner} onPress={() => navigation.navigate('VendorGate')}><View><Text style={styles.sellTitle}>Have something to sell?</Text><Text style={styles.sellSubtitle}>Open your shop on UniMart</Text></View><View style={styles.sellIcon}><Ionicons name="storefront-outline" size={21} color="#D94A06" /></View></Pressable>
     </ScrollView>
-  )
+  </SafeAreaView>;
 }
 
-export default HomeScreen
-
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: 'white',
-    paddingTop: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 16 
-  },
-  header: {
-    gap: 4 
-  },
-
-  greeting: {
-    fontSize: 20,
-    color: '#888',
-    fontWeight: '600' 
-  },
-  title: {
-    fontSize: 35,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 14 
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    paddingVertical: 11 
-  },
-  searchIcon: {
-    marginHorizontal: 12 
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#222',
-    paddingVertical: 0 },
-  category:{
-    marginTop:25,
-    gap:30
-  },
-  categoryTop:{
-    flexDirection:'row',
-    justifyContent:'space-between' 
-  },
-  Categories:{
-    width:60,
-    height:60,
-    borderRadius:100,
-    borderWidth: 'none',
-    alignItems:'center',
-    justifyContent:'center'
-  },
-  categoryBottom: {
-    flexDirection:'row',
-    justifyContent:'space-between',
-    width:'100%'
-  },
-  categoryCard:{
-    alignItems:'center',
-    gap:10
-  },
-  freeDelivery:{
-    backgroundColor:'rgba(255, 107, 0, 0.8)',
-    borderRadius:15,
-    padding:10,
-    gap:7,
-    marginTop:20
-  },
-  vendorBanner: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 0, 0.3)',
-    padding: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  vendorBannerTexts: {
-    gap: 4,
-  },
-  vendorBannerTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  vendorBannerSubtitle: {
-    fontSize: 13,
-    color: 'grey',
-  },
-  vendorBannerIcon: {
-    backgroundColor: 'rgba(255, 107, 0, 0.1)',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orderBtn:{
-    backgroundColor:'rgba(255, 107, 0, 0.8)',
-    padding:15,
-    alignSelf: 'flex-start',
-    borderRadius: 8 
-  },
-  popularVendors:{
-    marginTop: 30,
-    gap:15,
-  },
-  popularVendorsTop:{
-    flexDirection:'row',
-    alignItems:'center',
-    justifyContent:'space-between',
-    marginBottom: 10,
-  },
-  vendorCards:{
-    backgroundColor:'#FFF',
-    width: width * 0.85,
-    borderRadius:24,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 3,
-    marginBottom: 10
-  },
-  imageContainer: {
-    width: '100%',
-    height: 150,
-    position: 'relative'
-  },
-  vendorPic:{
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  topRatedBadge: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    backgroundColor: '#FFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4
-  },
-  topRatedText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#333'
-  },
-  heartBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    backgroundColor: '#FFF',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  vendorDetails:{
-    padding: 20,
-  },
-  vendorName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#111',
-    marginBottom: 6
-  },
-  vendorDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 14
-  },
-  vendorTags: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 16
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10
-  },
-  statsText: {
-    fontSize: 13,
-    color: '#666',
-    marginLeft: 6
-  },
-  statsDot: {
-    color: '#CCC',
-    marginHorizontal: 8
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8
-  },
-  pillFast: {
-    backgroundColor: '#FDECEB',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16
-  },
-  pillFastText: {
-    color: '#A83B10',
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  pillBudget: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16
-  },
-  pillBudgetText: {
-    color: '#555',
-    fontSize: 12,
-    fontWeight: '600'
-  },
-  popularListing:{
-    flexDirection:'row',
-    gap:20,
-    paddingBottom: 20
-  }
-
-    
-})
+  safeArea: { flex: 1, backgroundColor: '#D94A06' }, screen: { flex: 1, backgroundColor: '#FFFDFC' }, content: { paddingBottom: 30 },
+  hero: { backgroundColor: '#D94A06', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16, borderBottomLeftRadius: 26, borderBottomRightRadius: 26 }, topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, locationButton: { flexDirection: 'row', alignItems: 'center', flex: 1 }, locationIcon: { width: 29, height: 29, borderRadius: 9, backgroundColor: '#FFF4ED', alignItems: 'center', justifyContent: 'center', marginRight: 8 }, deliverTo: { fontSize: 9, lineHeight: 12, fontWeight: '700', color: '#FFE3D3' }, destinationRow: { flexDirection: 'row', alignItems: 'center', gap: 3 }, destination: { maxWidth: 230, color: '#FFF', fontSize: 15, fontWeight: '800' }, bellButton: { width: 38, height: 38, backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, notificationDot: { position: 'absolute', top: 8, right: 9, width: 7, height: 7, borderRadius: 5, backgroundColor: '#FFF', borderWidth: 1.5, borderColor: '#D94A06' },
+  section: { paddingHorizontal: 18, marginTop: 21 }, sectionHeader: { minHeight: 26, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, sectionTitle: { color: '#29221E', fontSize: 18, fontWeight: '800' }, seeAll: { color: '#CF480C', fontSize: 11, fontWeight: '700' }, categoryRail: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EDE4DE', justifyContent: 'space-between' }, categoryItem: { alignItems: 'center', flex: 1, minHeight: 81, position: 'relative' }, categoryIcon: { width: 45, height: 45, borderRadius: 13, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, activeCategoryIcon: { transform: [{ translateY: -1 }], shadowOpacity: 0.22, elevation: 4 }, categoryLabel: { fontSize: 11, color: '#8E8178', fontWeight: '600', marginTop: 6 }, activeCategoryLabel: { color: '#332A25', fontWeight: '800' }, categoryIndicator: { position: 'absolute', height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, bottom: -1, left: 12, right: 12, backgroundColor: 'transparent' }, activeCategoryIndicator: { backgroundColor: '#D94A06' },
+  fullWidthSection: { paddingHorizontal: 0, marginTop: 26 }, insetHeader: { paddingHorizontal: 18 }, titleWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 5 }, lightning: { color: '#D94A06', fontSize: 21, fontWeight: '900', marginTop: -1 }, endsBadge: { backgroundColor: '#FBE8E1', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, marginLeft: 1 }, endsText: { fontSize: 8, color: '#C53E0B', fontWeight: '800' }, horizontalList: { gap: 11, paddingHorizontal: 18, paddingBottom: 4 },
+  vendorCard: { width: CARD_WIDTH, backgroundColor: '#FFF', borderRadius: 13, overflow: 'hidden', borderWidth: 1, borderColor: '#F0E9E4', shadowColor: '#705543', shadowOpacity: 0.07, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }, dealCard: { width: CARD_WIDTH - 7 }, imageWrap: { height: 108, position: 'relative', backgroundColor: '#EEE7E1' }, cardImage: { width: '100%', height: '100%', resizeMode: 'cover' }, cardBadge: { position: 'absolute', top: 7, left: 7, backgroundColor: '#FFF', paddingVertical: 3, paddingHorizontal: 6, borderRadius: 8 }, badgeText: { color: '#3F322A', fontSize: 9, fontWeight: '800' }, dealBadge: { backgroundColor: '#D94A06' }, dealBadgeText: { color: '#FFF' }, heartButton: { position: 'absolute', right: 7, top: 7, height: 24, width: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center' }, deliveryPill: { position: 'absolute', bottom: 6, left: 7, backgroundColor: 'rgba(37,31,27,0.78)', borderRadius: 8, paddingVertical: 3, paddingHorizontal: 5, flexDirection: 'row', gap: 2, alignItems: 'center' }, deliveryText: { color: '#FFF', fontSize: 9, fontWeight: '700' }, cardCopy: { paddingHorizontal: 9, paddingTop: 8, paddingBottom: 9 }, cardTitle: { color: '#332A25', fontSize: 12.5, fontWeight: '800' }, cardSubtitle: { color: '#8C7E74', fontSize: 10, marginTop: 3 }, cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 7, minHeight: 19 }, cardPrice: { color: '#D94A06', fontSize: 11, fontWeight: '800' }, addButton: { width: 21, height: 21, borderRadius: 11, backgroundColor: '#C8460B', alignItems: 'center', justifyContent: 'center' }, smallRating: { color: '#55443A', fontSize: 10, fontWeight: '700' },
+  popularSection: { marginTop: 27 }, popularTitle: { color: '#29221E', fontSize: 20, fontWeight: '800', paddingHorizontal: 18 }, popularCaption: { color: '#8B7D73', fontSize: 10.5, marginTop: 3, paddingHorizontal: 18 }, trendingHeader: { marginTop: 8, marginBottom: 10 }, trendingTitle: { color: '#483A31', fontSize: 13, fontWeight: '800' }, sellBanner: { marginHorizontal: 18, marginTop: 27, backgroundColor: '#FFF1E9', borderRadius: 15, padding: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#FFE1D2' }, sellTitle: { color: '#573A28', fontSize: 14, fontWeight: '800' }, sellSubtitle: { color: '#967F71', fontSize: 11, marginTop: 3 }, sellIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+});

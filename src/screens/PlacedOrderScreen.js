@@ -1,24 +1,29 @@
 import { AppText as Text } from '../components/CustomText';
-import React, { useRef, useEffect, useContext } from 'react';
-import {View,ScrollView,StyleSheet,Pressable,Image,  SafeAreaView,Platform,Animated,Share,BackHandler,} from 'react-native';
+import React, { useRef, useEffect, useContext, useState } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  Image,
+  SafeAreaView,
+  Platform,
+  Animated,
+  Share,
+  BackHandler,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { CartContext } from '../context/CartContext';
-import { AuthContext } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   formatNaira,
   getVendorAccent,
   getVendorInitials,
-  generateOrderId,
   getEstimatedDelivery,
-  formatOrderDateLabel,
-  computeItemsCountFromPackages,
-  buildOrderPreviewFromPackages,
-  PAYMENT_LABELS,
 } from '../utils/orders';
-
 
 const BG = '#F7F5F0';
 const PRIMARY = '#B53B18';
@@ -31,11 +36,9 @@ const SHADOW = 'rgba(26, 22, 18, 0.08)';
 const SUCCESS_GREEN = '#2D6A4F';
 const PROMO_RED = '#C0392B';
 
-
 const SurfaceCard = ({ children, style }) => (
   <View style={[styles.surfaceCard, style]}>{children}</View>
 );
-
 
 const AnimatedCheck = () => {
   const scale = useRef(new Animated.Value(0)).current;
@@ -62,14 +65,28 @@ const AnimatedCheck = () => {
 
   return (
     <Animated.View
-      style={[
-        styles.checkCircle,
-        { transform: [{ scale }], opacity },
-      ]}
+      style={[styles.checkCircle, { transform: [{ scale }], opacity }]}
     >
       <Ionicons name="checkmark" size={36} color="#FFF" />
     </Animated.View>
   );
+};
+
+const capitalize = (s = '') => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Returns the first image URL from an array, a JSON string, or a plain URL string
+const getFirstImage = (images) => {
+  if (!images) return null;
+  if (Array.isArray(images)) return images[0] ?? null;
+  if (typeof images === 'string') {
+    try {
+      const parsed = JSON.parse(images);
+      return Array.isArray(parsed) ? parsed[0] ?? null : parsed;
+    } catch {
+      return images;
+    }
+  }
+  return null;
 };
 
 // ── Main screen ──
@@ -78,30 +95,19 @@ const PlacedOrderScreen = () => {
   const route = useRoute();
   const { clearCart } = useContext(CartContext);
   const fadeIn = useRef(new Animated.Value(0)).current;
-  const orderIdRef = useRef(generateOrderId());
   const deliveryRef = useRef(getEstimatedDelivery());
-  const placedAtRef = useRef(new Date());
-  const hasSavedOrderRef = useRef(false);
+  const hasClearedCartRef = useRef(false);
   const { orderId } = route.params;
 
-  // Extract data passed from CheckoutScreen
-  const {
-    packages = [],
-    subtotal = 0,
-    deliveryFee = 0,
-    discount = 0,
-    appliedCoupon = null,
-    totalPaid = 0,
-    selectedPayment = 'card',
-  } = route.params || {};
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   const estimatedDelivery = deliveryRef.current;
-  const paymentMethodLabel = PAYMENT_LABELS[selectedPayment] || 'Card';
-  
 
+  // Block back navigation on this screen
   useEffect(() => {
     const onBackPress = () => true;
-
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       onBackPress
@@ -129,47 +135,112 @@ const PlacedOrderScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!hasSavedOrderRef.current) {
+    if (!hasClearedCartRef.current) {
       clearCart();
-      hasSavedOrderRef.current = true;
+      hasClearedCartRef.current = true;
     }
   }, [clearCart]);
 
+  // Fetch the real order from Supabase
   useEffect(() => {
     const fetchOrder = async () => {
-      const  { data, error } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select(`
-          *,
+          id,
+          order_number,
+          total,
+          status,
+          delivery_address,
+          created_at,
           order_packages (
-            *,
-            order_items (*)
+            id,
+            vendor_id,
+            status,
+            subtotal,
+            vendors ( id, name ),
+            order_items (
+              id,
+              product_id,
+              name,
+              price,
+              quantity,
+              products ( images )
+            )
           )
         `)
         .eq('id', orderId)
         .single();
-      
-      console.log('PLACED ORDER:', data);
-      console.log('PLACED ORDER ERROR:', error);
-      };
+
+      if (error) {
+
+        setFetchError(error.message);
+      } else {
+        setOrder(data);
+      }
+      setLoading(false);
+    };
 
     fetchOrder();
   }, [orderId]);
-      
-      
-        
 
+  // Map DB rows to the shape the UI uses
+  const packages = (order?.order_packages ?? []).map((pkg) => ({
+    vendorId: pkg.vendor_id,
+    vendorName: pkg.vendors?.name ?? 'Vendor',
+    status: pkg.status ?? 'pending',
+    subtotal: Number(pkg.subtotal),
+    items: (pkg.order_items ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      image: getFirstImage(item.products?.images), // use your real column name
+      price: Number(item.price),
+      quantity: item.quantity,
+    })),
+  }));
 
+  const subtotal = packages.reduce((sum, p) => sum + p.subtotal, 0);
+  const totalPaid = Number(order?.total ?? 0);
+  const feesTotal = Math.max(totalPaid - subtotal, 0); // delivery + service - discount
+  const displayOrderId = order ? `#${order.order_number}` : '';
 
   const handleShareOrder = async () => {
     try {
       await Share.share({
-        message: `I just placed an order on Unilag Marketplace! 🎉\nOrder ID: ${orderId}\nTotal: ${formatNaira(totalPaid)}`,
+        message: `I just placed an order on Unilag Marketplace! 🎉\nOrder ID: ${displayOrderId}\nTotal: ${formatNaira(totalPaid)}`,
       });
     } catch (e) {
       // share cancelled
     }
   };
+
+  // ── Loading / error states (must come after all hooks) ──
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center' }]}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </SafeAreaView>
+    );
+  }
+
+  if (fetchError || !order) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={{ padding: 24 }}>
+          <Text style={styles.heroTitle}>Payment received</Text>
+          <Text style={{ color: TEXT_MUTED, marginVertical: 12 }}>
+            We couldn't load your order details right now. You can find it in
+            My Orders.
+          </Text>
+          <Pressable onPress={() => navigation.navigate('MyOrders')}>
+            <Text style={{ color: PRIMARY }}>Go to My Orders</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -192,21 +263,13 @@ const PlacedOrderScreen = () => {
           <Animated.View style={{ opacity: fadeIn, alignItems: 'center' }}>
             <Text style={styles.heroTitle}>Order Placed{'\n'}Successfully</Text>
             <View style={styles.orderIdRow}>
-              <Text style={styles.orderIdLabel}>ID: {orderId}</Text>
+              <Text style={styles.orderIdLabel}>ID: {displayOrderId}</Text>
               <Pressable style={styles.copyBtn} hitSlop={8}>
                 <Ionicons name="copy-outline" size={14} color={TEXT_LIGHT} />
               </Pressable>
             </View>
           </Animated.View>
         </View>
-
-        {/* ── Delivery estimate banner ── */}
-        <Animated.View style={[styles.deliveryBanner, { opacity: fadeIn }]}>
-          <Text style={styles.deliveryLabel}>ESTIMATED DELIVERY</Text>
-          <Text style={styles.deliveryDates}>
-            {estimatedDelivery.from} – {estimatedDelivery.to}
-          </Text>
-        </Animated.View>
 
         {/* ── Packages section ── */}
         <Animated.View style={{ opacity: fadeIn }}>
@@ -228,7 +291,9 @@ const PlacedOrderScreen = () => {
                 </View>
                 <Text style={styles.vendorName}>{vendor.vendorName}</Text>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText}>Processing</Text>
+                  <Text style={styles.statusBadgeText}>
+                    {capitalize(vendor.status)}
+                  </Text>
                 </View>
               </View>
 
@@ -237,13 +302,35 @@ const PlacedOrderScreen = () => {
                 <View key={item.id}>
                   {index > 0 && <View style={styles.itemDivider} />}
                   <View style={styles.itemRow}>
-                    <Image source={{ uri: item.image }} style={styles.itemImage} />
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={styles.itemImage}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.itemImage,
+                          {
+                            backgroundColor: BORDER,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="image-outline"
+                          size={20}
+                          color={TEXT_LIGHT}
+                        />
+                      </View>
+                    )}
                     <View style={styles.itemInfo}>
                       <Text style={styles.itemName} numberOfLines={1}>
                         {item.name}
                       </Text>
                       <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
-                    </View>                                                                                                                                                                    
+                    </View>
                     <Text style={styles.itemPrice}>
                       {formatNaira(item.price * item.quantity)}
                     </Text>
@@ -263,39 +350,24 @@ const PlacedOrderScreen = () => {
             </View>
 
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery Fee</Text>
-              <Text style={styles.summaryValue}>{formatNaira(deliveryFee)}</Text>
+              <Text style={styles.summaryLabel}>Delivery & fees</Text>
+              <Text style={styles.summaryValue}>{formatNaira(feesTotal)}</Text>
             </View>
-
-            {appliedCoupon && discount > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.promoLabel}>
-                  Promo Applied ({appliedCoupon.code})
-                </Text>
-                <Text style={styles.promoValue}>
-                  -{formatNaira(discount)}
-                </Text>
-              </View>
-            )}
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryRow}>
               <Text style={styles.totalLabel}>Total Paid</Text>
               <View style={styles.totalValueRow}>
-                <Text style={styles.totalValue}>
-                  {formatNaira(totalPaid)}
-                </Text>
+                <Text style={styles.totalValue}>{formatNaira(totalPaid)}</Text>
                 <View style={styles.paidCheckIcon}>
-                  <Ionicons name="checkmark-circle" size={20} color={SUCCESS_GREEN} />
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color={SUCCESS_GREEN}
+                  />
                 </View>
               </View>
-            </View>
-
-            <View style={styles.paymentMethodRow}>
-              <Text style={styles.paymentMethodText}>
-                Paid via {paymentMethodLabel}
-              </Text>
             </View>
           </SurfaceCard>
         </Animated.View>
@@ -335,6 +407,7 @@ const PlacedOrderScreen = () => {
     </SafeAreaView>
   );
 };
+
 
 export default PlacedOrderScreen;
 

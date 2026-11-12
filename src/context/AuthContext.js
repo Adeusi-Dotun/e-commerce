@@ -1,6 +1,5 @@
 import { createContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { useNavigation } from '@react-navigation/native';
 
 export const AuthContext = createContext();
 
